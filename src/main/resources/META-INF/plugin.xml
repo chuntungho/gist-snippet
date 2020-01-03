@@ -4,7 +4,7 @@
     <vendor email="ho@chuntung.com" url="https://gist.chuntung.com">Tony Ho</vendor>
 
     <description><![CDATA[
-    A code snippet tool based on GitHub gist, provides with an ability to fetch secret or starred gist of GitHub accounts.
+    A code snippet tool based on GitHub gist, which provides with an ability to fetch secret or starred gist of GitHub accounts.
     It depends on built-in GitHub plugin which should be enabled.
     ]]></description>
 

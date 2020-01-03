@@ -13,11 +13,12 @@ import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.SelectionModel;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.IconLoader;
 import org.jetbrains.annotations.NotNull;
 
 public class InsertAction extends AnAction implements DumbAware {
     public InsertAction() {
-        super(AllIcons.Vcs.Vendors.Github);
+        super(IconLoader.getIcon("/images/gist.png"));
     }
 
     @Override

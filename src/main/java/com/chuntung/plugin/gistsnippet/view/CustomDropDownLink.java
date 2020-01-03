@@ -60,7 +60,7 @@ class CustomDropDownLink extends JBComboBoxLabel {
     }
 
     /**
-     * Set selected item and trigger consumer.
+     * Only render selected item.
      *
      * @param selectedItem
      */
@@ -73,9 +73,6 @@ class CustomDropDownLink extends JBComboBoxLabel {
         if (icons.size() > 0) {
             leftIcon.setIcon(icons.get(items.indexOf(selectedItem)));
         }
-        if (consumer != null) {
-            consumer.accept(selectedItem);
-        }
 
         this.selectedItem = selectedItem;
     }
@@ -85,6 +82,9 @@ class CustomDropDownLink extends JBComboBoxLabel {
         final BaseListPopupStep<String> list = new BaseListPopupStep<String>(null, items, icons) {
             @Override
             public PopupStep onChosen(String selectedValue, boolean finalChoice) {
+                if (consumer != null) {
+                    consumer.accept(selectedValue);
+                }
                 setSelectedItem(selectedValue);
                 return super.onChosen(selectedValue, finalChoice);
             }

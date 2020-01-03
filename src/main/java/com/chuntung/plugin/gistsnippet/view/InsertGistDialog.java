@@ -23,7 +23,6 @@ import com.intellij.ui.components.JBComboBoxLabel;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.labels.DropDownLink;
 import com.intellij.ui.components.labels.LinkLabel;
-import com.intellij.ui.treeStructure.SimpleNode;
 import com.intellij.ui.treeStructure.SimpleTree;
 import com.intellij.ui.treeStructure.SimpleTreeBuilder;
 import com.intellij.util.Consumer;
@@ -196,6 +195,7 @@ public class InsertGistDialog extends DialogWrapper {
                 currentAccount = chosenItem;
                 // load All Own Gist by default
                 ((CustomDropDownLink) scopeDropDownLink).setSelectedItem("Own");
+                loadOwnGist(false);
             }
         }, true);
 
@@ -297,23 +297,17 @@ public class InsertGistDialog extends DialogWrapper {
     }
 
     private void loadOwnGist(boolean forced) {
-        if (currentAccount == null) {
-            return;
-        }
+        // reset type filter
+        typeDropDownLink.setText("All");
 
-        // com.intellij.util.io.HttpRequests.process does not allow Network accessed in dispatch thread or read action
-        // start a background task to access network due to api limitation
+        // com.intellij.util.io.HttpRequests#process does not allow Network accessed in dispatch thread or read action
+        // start a background task to bypass api limitation
         new Task.Backgroundable(project, "Loading own gists...") {
-
-            private List<GistDTO> ownGist;
-
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                ownGist = service.queryOwnGist(currentAccount, forced);
-            }
-
-            @Override
-            public void onSuccess() {
+                List<GistDTO> ownGist = service.queryOwnGist(currentAccount, forced);
+                // non-modal task should not invoke onSuccess() in modal dialog initialization.
+                // it will be blocked in dispatch thread by modal dialog, here just run in background
                 if (ownGist != null) {
                     renderTree(ownGist, ScopeEnum.OWN);
                 }
@@ -322,20 +316,13 @@ public class InsertGistDialog extends DialogWrapper {
     }
 
     private void loadStarredGist(boolean forced) {
-        if (currentAccount == null) {
-            return;
-        }
+        // reset type filter
+        typeDropDownLink.setText("All");
 
         new Task.Backgroundable(project, "Loading starred gists...") {
-            private List<GistDTO> starredGist;
-
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                starredGist = service.queryStarredGist(currentAccount, forced);
-            }
-
-            @Override
-            public void onSuccess() {
+                List<GistDTO> starredGist = service.queryStarredGist(currentAccount, forced);
                 if (starredGist != null) {
                     renderTree(starredGist, ScopeEnum.STARRED);
                 }
@@ -346,9 +333,6 @@ public class InsertGistDialog extends DialogWrapper {
     private void renderTree(List<GistDTO> gistList, ScopeEnum scope) {
         snippetRoot.setSetChildren(gistList, scope);
         treeBuilder.queueUpdate();
-
-        // reset type filter
-        typeDropDownLink.setText("All");
     }
 
     @Nullable
