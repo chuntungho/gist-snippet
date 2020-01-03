@@ -1,0 +1,41 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        jcenter()
+    }
+}
+
+plugins {
+//    id 'java'
+//    id 'idea'
+    id 'org.jetbrains.intellij' version '0.4.15'
+}
+
+group 'com.chuntung.plugin'
+version "${version}"
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+
+//apply plugin: 'java'
+//apply plugin: 'idea'
+//apply plugin: 'org.jetbrains.intellij'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}
+
+// See https://github.com/JetBrains/gradle-intellij-plugin/
+intellij {
+    version ideaVersion
+    plugins = ["github"]
+    pluginName "Gist Snippet"
+    sameSinceUntilBuild Boolean.valueOf(isEAP)
+    patchPluginXml {
+        untilBuild customUtilBuild
+        changeNotes "${new File('changeNotes.txt').getText('UTF-8')}"
+    }
+}

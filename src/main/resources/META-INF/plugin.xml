@@ -1,0 +1,30 @@
+<idea-plugin>
+    <id>com.chuntung.plugin.gistsnippet</id>
+    <name>Gist Snippet</name>
+    <vendor email="ho@chuntung.com" url="https://gist.chuntung.com">Tony Ho</vendor>
+
+    <description><![CDATA[
+    A code snippet tool based on GitHub gist, provides with an ability to fetch secret or starred gist of GitHub accounts.
+    It depends on built-in GitHub plugin which should be enabled.
+    ]]></description>
+
+    <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/plugin_compatibility.html
+         on how to target different products -->
+    <depends>com.intellij.modules.lang</depends>
+    <depends>org.jetbrains.plugins.github</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- core application service -->
+        <applicationService
+                serviceImplementation="com.chuntung.plugin.gistsnippet.service.GistSnippetService"/>
+    </extensions>
+
+    <actions>
+        <!-- Insert Gist -->
+        <action id="GistSnippet.Insert" text="Insert Gist..."
+                description="Search gist and then insert selection into current editor"
+                class="com.chuntung.plugin.gistsnippet.action.InsertAction">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="Github.Create.Gist"/>
+        </action>
+    </actions>
+</idea-plugin>
