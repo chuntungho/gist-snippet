@@ -4,8 +4,8 @@
     <vendor email="ho@chuntung.com" url="https://gist.chuntung.com">Tony Ho</vendor>
 
     <description><![CDATA[
-    A code snippet tool based on GitHub gist, which provides with an ability to fetch secret or starred gist of GitHub accounts.
-    It depends on built-in GitHub plugin which should be enabled.
+    A code snippet tool based on GitHub Gist, that provides with a feature to fetch own or starred gists of GitHub accounts.
+    It depends on built-in GitHub plugin which should be enabled. <a href="https://gist.chuntung.com">Getting Started</a>
     ]]></description>
 
     <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/plugin_compatibility.html

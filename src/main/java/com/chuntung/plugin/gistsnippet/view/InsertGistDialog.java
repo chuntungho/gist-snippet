@@ -178,10 +178,8 @@ public class InsertGistDialog extends DialogWrapper {
         super.init();
     }
 
-    private void initYoursPane(List<GithubAccount> accountList, GithubAccount singleOrDefaultAccount) {
-        // choose first account by default
-
-        currentAccount = accountList.get(0);
+    private void initYoursPane(List<GithubAccount> accountList, GithubAccount defaultAccount) {
+        currentAccount = defaultAccount;
 
         // visible if has account
         yoursSplitPane.setVisible(true);

@@ -23,8 +23,6 @@ public class SnippetNodeDTO extends SimpleNode {
     private static Map<String, Icon> avatarCache = new ConcurrentHashMap<>();
     private Icon publicIcon = IconLoader.getIcon("/images/public.png");
     private Icon secretIcon = IconLoader.getIcon("/images/secret.png");
-//    private Icon starredIcon = IconLoader.getIcon("/images/starred.png");
-//    private Icon unstarredIcon = IconLoader.getIcon("/images/unstarred.png");
 
     public static final Pattern TITLE_PATTERN = Pattern.compile("#(.+)#");
     public static final Pattern TAG_PATTERN = Pattern.compile("\\[([^\\[\\]]+)\\]");
@@ -238,7 +236,7 @@ public class SnippetNodeDTO extends SimpleNode {
                 txt = tagMatcher.replaceAll("");
             }
 
-            node.setDescription(txt);
+            node.setDescription(txt.trim());
         }
 
         return node;
