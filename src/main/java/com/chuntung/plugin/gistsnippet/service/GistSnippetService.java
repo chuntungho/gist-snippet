@@ -5,16 +5,17 @@ import com.intellij.notification.*;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.plugins.github.api.GithubApiRequest;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutor;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 
-import javax.xml.bind.annotation.XmlTransient;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class GistSnippetService {
     public static final Logger logger = Logger.getInstance(GistSnippetService.class);
@@ -24,11 +25,9 @@ public class GistSnippetService {
     public static final String STARRED_GISTS_URL = "https://api.github.com/gists/starred";
     public static final String GIST_DETAIL_URL = "https://api.github.com/gists/%s";
 
-    // Just cache in memory
-    @XmlTransient
-    private Map<String, List<GistDTO>> scopeCache = new ConcurrentHashMap<>();
-    @XmlTransient
-    private Map<String, GistDTO> gistCache = new ConcurrentHashMap<>();
+    // cache in memory, can be collected
+    private Map<String, List<String>> scopeCache = ContainerUtil.createConcurrentSoftValueMap();
+    private Map<String, GistDTO> gistCache = ContainerUtil.createConcurrentSoftValueMap();
 
     public static GistSnippetService getInstance() {
         return ServiceManager.getService(GistSnippetService.class);
@@ -38,52 +37,85 @@ public class GistSnippetService {
     public List<GistDTO> queryOwnGist(GithubAccount account, boolean forced) {
         String key = account.toString() + "#own";
         if (forced) {
-            List<GistDTO> gistDTOS = scopeCache.computeIfPresent(key, (k, v) -> scopeCache.remove(k));
-            if (gistDTOS != null) {
-                for (GistDTO gistDTO : gistDTOS) {
-                    gistCache.remove(gistDTO.getId());
-                }
-            }
+            List<String> gists = scopeCache.computeIfPresent(key, (k, v) -> scopeCache.remove(k));
+            removeFromCache(gists);
         }
 
-        return scopeCache.computeIfAbsent(key, (k) -> {
+        AtomicReference<List<GistDTO>> result = new AtomicReference<>();
+        List<String> idList = scopeCache.computeIfAbsent(key, (k) -> {
             try {
                 GithubApiRequest.Get.JsonList request = new GithubApiRequest.Get.JsonList(OWN_GISTS_URL, GistDTO.class, MIME_TYPE);
                 GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
-                List<GistDTO> result = (List<GistDTO>) executor.execute(request);
-                return result;
+                List<GistDTO> gistList = (List<GistDTO>) executor.execute(request);
+                result.set(gistList);
+                return putIntoCache(gistList);
             } catch (IOException e) {
                 logger.info("Failed to query own gist, error: " + e.getMessage());
                 notifyWarn("Failed to load own Gist, " + e.getMessage(), null);
                 return null;
             }
         });
+
+        return decideResult(account, result, idList);
+    }
+
+    private void removeFromCache(List<String> gists) {
+        if (gists != null) {
+            for (String gistId : gists) {
+                gistCache.remove(gistId);
+            }
+        }
+    }
+
+    private List<String> putIntoCache(List<GistDTO> gistList) {
+        if (gistList != null) {
+            List<String> list = new ArrayList<>(gistList.size());
+            for (GistDTO gistDTO : gistList) {
+                list.add(gistDTO.getId());
+                gistCache.putIfAbsent(gistDTO.getId(), gistDTO);
+            }
+            return list;
+        }
+        return null;
+    }
+
+    private List<GistDTO> decideResult(GithubAccount account, AtomicReference<List<GistDTO>> result, List<String> idList) {
+        if (result.get() == null && idList != null) {
+            // N + 1
+            List<GistDTO> gistList = new ArrayList<>(idList.size());
+            for (String gistId : idList) {
+                gistList.add(getGistDetail(account, gistId, false));
+            }
+            result.set(gistList);
+        }
+
+        return result.get();
     }
 
     // queryStarredGist
     public List<GistDTO> queryStarredGist(GithubAccount account, boolean forced) {
         String key = account.toString() + "#starred";
         if (forced) {
-            List<GistDTO> gistDTOS = scopeCache.computeIfPresent(key, (k, v) -> scopeCache.remove(k));
-            if (gistDTOS != null) {
-                for (GistDTO gistDTO : gistDTOS) {
-                    gistCache.remove(gistDTO.getId());
-                }
-            }
+            List<String> gists = scopeCache.computeIfPresent(key, (k, v) -> scopeCache.remove(k));
+            removeFromCache(gists);
         }
 
-        return scopeCache.computeIfAbsent(key, (k) -> {
+        AtomicReference<List<GistDTO>> result = new AtomicReference<>();
+        List<String> list = scopeCache.computeIfAbsent(key, (k) -> {
             try {
                 GithubApiRequest.Get.JsonList<GistDTO> request = new GithubApiRequest.Get.JsonList<>(STARRED_GISTS_URL, GistDTO.class, MIME_TYPE);
                 GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
-                List<GistDTO> result = (List<GistDTO>) executor.execute(request);
-                return result;
+                List<GistDTO> gistList = (List<GistDTO>) executor.execute(request);
+                result.set(gistList);
+                return putIntoCache(gistList);
             } catch (IOException e) {
                 logger.info("Failed to query starred gist, error: " + e.getMessage());
                 notifyWarn("Failed to load starred Gist, " + e.getMessage(), null);
                 return null;
             }
         });
+
+        return decideResult(account, result, list);
     }
 
     // queryPublicGist

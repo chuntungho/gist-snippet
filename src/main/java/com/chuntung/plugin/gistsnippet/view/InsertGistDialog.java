@@ -7,6 +7,8 @@ import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
 import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
 import com.chuntung.plugin.gistsnippet.service.GistSnippetService;
 import com.intellij.ide.BrowserUtil;
+import com.intellij.ide.util.treeView.AbstractTreeStructure;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
@@ -17,14 +19,14 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.ui.components.JBComboBoxLabel;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.labels.DropDownLink;
 import com.intellij.ui.components.labels.LinkLabel;
+import com.intellij.ui.tree.AsyncTreeModel;
+import com.intellij.ui.tree.StructureTreeModel;
 import com.intellij.ui.treeStructure.SimpleTree;
-import com.intellij.ui.treeStructure.SimpleTreeBuilder;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -34,11 +36,11 @@ import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 import javax.swing.*;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.lang.reflect.Constructor;
 import java.util.*;
 
 public class InsertGistDialog extends DialogWrapper {
@@ -60,8 +62,8 @@ public class InsertGistDialog extends DialogWrapper {
     private boolean insertable;
     private GistSnippetService service;
 
-    private SimpleTreeBuilder treeBuilder;
     private SnippetRootNode snippetRoot;
+    private StructureTreeModel<CustomTreeStructure> snippetStructure;
 
     // remember used account
     private GithubAccount currentAccount;
@@ -100,8 +102,25 @@ public class InsertGistDialog extends DialogWrapper {
 
         // use tree structure for rendering
         snippetRoot = new SnippetRootNode();
-        treeBuilder = new SimpleTreeBuilder(snippetTree, (DefaultTreeModel) snippetTree.getModel(),
-                new CustomTreeStructure(snippetRoot), null);
+        // fix API removal issue
+        try {
+            // after 192
+            Constructor<StructureTreeModel> constructor = StructureTreeModel.class.getConstructor(AbstractTreeStructure.class, Disposable.class);
+            snippetStructure = constructor.newInstance(new CustomTreeStructure(snippetRoot), myDisposable);
+        } catch (NoSuchMethodException e) {
+            try {
+                // before 192
+                Constructor<StructureTreeModel> constructor = StructureTreeModel.class.getConstructor(AbstractTreeStructure.class);
+                snippetStructure = constructor.newInstance(new CustomTreeStructure(snippetRoot));
+            } catch (ReflectiveOperationException ex) {
+                // NOOP
+            }
+        } catch (ReflectiveOperationException e) {
+            // NOOP
+        }
+        if (snippetStructure != null) {
+            snippetTree.setModel(new AsyncTreeModel(snippetStructure, myDisposable));
+        }
 
         // UI designer cannot find custom class when preview, here create manually.
         Icon ownIcon = IconLoader.getIcon("/images/own.png");
@@ -133,8 +152,8 @@ public class InsertGistDialog extends DialogWrapper {
                     }
                 }
 
-                // rebuild tree
-                treeBuilder.queueUpdate();
+                // rebuild whole tree
+                snippetStructure.invalidate();
             }
         }, true);
 
@@ -210,7 +229,14 @@ public class InsertGistDialog extends DialogWrapper {
         }
         if (selected != null && selected.isLeaf()) {
             // show file content
-            loadFileContent(project, selected, false);
+            GistFileDTO gistFileDTO = getUserObject(selected);
+            // just show cache in view
+            if (gistFileDTO.getContent() != null) {
+                showInEditor(gistFileDTO, false);
+            } else {
+                // load forcibly
+                loadFileContent(project, selected, true);
+            }
         }
     }
 
@@ -229,42 +255,25 @@ public class InsertGistDialog extends DialogWrapper {
         }
     }
 
+    // load file content
     private void loadFileContent(Project project, DefaultMutableTreeNode selected, boolean forced) {
-        GistFileDTO gistFileDTO = getUserObject(selected);
-        if (gistFileDTO.getContent() != null && !forced) {
-            showInEditor(gistFileDTO, false);
-            return;
-        }
-
         DefaultMutableTreeNode parent = (DefaultMutableTreeNode) selected.getParent();
         SnippetNodeDTO snippet = getUserObject(parent);
         new Task.Backgroundable(project, "Loading gist files...") {
-            boolean needRebuild = false;
+            boolean showInDispatch = false;
 
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 GistDTO gist = service.getGistDetail(currentAccount, snippet.getId(), forced);
                 if (gist != null) {
-                    // merge files into tree structure
-                    Set<String> children = new HashSet<>();
-                    // traverse tree structure to remove non-existing items
-                    Iterator<GistFileDTO> iterator = snippet.getFiles().iterator();
-                    while (iterator.hasNext()) {
-                        GistFileDTO fileDTO = iterator.next();
-                        if (gist.getFiles().containsKey(fileDTO.getFilename())) {
-                            fileDTO.setContent(gist.getFiles().get(fileDTO.getFilename()).getContent());
-                            children.add(fileDTO.getFilename());
-                        } else {
-                            needRebuild = true;
-                            iterator.remove();
-                        }
-                    }
-                    // traverse latest files to add missing items if gist changed
-                    for (GistFileDTO fileDTO : gist.getFiles().values()) {
-                        if (!children.contains(fileDTO.getFilename())) {
-                            needRebuild = true;
-                            snippet.getFiles().add(fileDTO);
-                        }
+                    boolean shouldUpdate = snippet.update(gist);
+                    if (shouldUpdate) {
+                        // new background task, should invoker later in dispatch thread
+                        snippetStructure.invalidate(new TreePath(parent), true).onSuccess((treePath) -> {
+                            ApplicationManager.getApplication().invokeLater(() -> previewFile());
+                        });
+                    } else {
+                        showInDispatch = true;
                     }
                 }
             }
@@ -272,11 +281,12 @@ public class InsertGistDialog extends DialogWrapper {
             @Override
             // this will run in dispatch thread
             public void onSuccess() {
-                // rebuild if needed
-                if (needRebuild) {
-                    treeBuilder.queueUpdateFrom(snippet, false);
+                if (showInDispatch) {
+                    previewFile();
                 }
+            }
 
+            private void previewFile() {
                 // selected may be changed by user, check before replacing editor content
                 Object currentSelected = snippetTree.getLastSelectedPathComponent();
                 if (currentSelected == selected) {
@@ -330,7 +340,7 @@ public class InsertGistDialog extends DialogWrapper {
 
     private void renderTree(List<GistDTO> gistList, ScopeEnum scope) {
         snippetRoot.setSetChildren(gistList, scope);
-        treeBuilder.queueUpdate();
+        snippetStructure.invalidate();
     }
 
     @Nullable
@@ -373,9 +383,6 @@ public class InsertGistDialog extends DialogWrapper {
     protected void dispose() {
         if (editor != null) {
             EditorFactory.getInstance().releaseEditor(editor);
-        }
-        if (treeBuilder != null) {
-            Disposer.dispose(treeBuilder);
         }
         super.dispose();
     }

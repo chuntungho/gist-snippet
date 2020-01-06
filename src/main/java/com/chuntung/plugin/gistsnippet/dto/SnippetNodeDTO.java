@@ -12,9 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -165,12 +163,21 @@ public class SnippetNodeDTO extends SimpleNode {
     @NotNull
     protected PresentationData createPresentation() {
         PresentationData presentation = new PresentationData();
+        render(presentation);
+        return presentation;
+    }
 
+    @Override
+    protected void update(PresentationData presentation) {
+        render(presentation);
+    }
+
+    private void render(PresentationData presentation) {
         if (ScopeEnum.OWN.equals(scope)) {
-            setIcon(isPublic ? publicIcon : secretIcon);
+            presentation.setIcon(isPublic ? publicIcon : secretIcon);
         } else {
             // refer to github plugin to lazy load avatar icon
-            setIcon(isPublic ? publicIcon : secretIcon);
+            presentation.setIcon(isPublic ? publicIcon : secretIcon);
         }
 
         // Text format: tags TITLE Description n files
@@ -194,8 +201,6 @@ public class SnippetNodeDTO extends SimpleNode {
         String activeAt = updatedAt != null ? updatedAt : createdAt;
         String tooltip = String.format("Last active at %s by %s", activeAt, owner.getLogin());
         presentation.setTooltip(tooltip);
-
-        return presentation;
     }
 
     static SnippetNodeDTO of(GistDTO dto, ScopeEnum scope) {
@@ -210,7 +215,15 @@ public class SnippetNodeDTO extends SimpleNode {
         node.setFilesCount(dto.getFiles().size());
         node.setFiles(new ArrayList<>(dto.getFiles().values()));
 
+        parseDescription(dto, node);
+
+        return node;
+    }
+
+    private static void parseDescription(GistDTO dto, SnippetNodeDTO node) {
         if (dto.getDescription() == null || dto.getDescription().isEmpty()) {
+            node.setTitle(null);
+            node.setTags(null);
             // set description as first file name if empty
             for (GistFileDTO fileDTO : dto.getFiles().values()) {
                 node.setDescription(fileDTO.getFilename());
@@ -238,7 +251,44 @@ public class SnippetNodeDTO extends SimpleNode {
 
             node.setDescription(txt.trim());
         }
+    }
 
-        return node;
+    public boolean update(GistDTO dto) {
+        boolean updated = false;
+        if (!Objects.equals(createdAt, dto.getCreatedAt()) || !Objects.equals(updatedAt, dto.getUpdatedAt())) {
+            parseDescription(dto, this);
+
+            setPublic(dto.getPublic());
+            setCreatedAt(dto.getCreatedAt());
+            setUpdatedAt(dto.getUpdatedAt());
+
+            updated = true;
+        }
+
+        // merge files
+        setFilesCount(dto.getFiles().size());
+        Set<String> children = new HashSet<>();
+        // traverse tree structure to remove non-existing items
+        Iterator<GistFileDTO> iterator = getFiles().iterator();
+        while (iterator.hasNext()) {
+            GistFileDTO fileDTO = iterator.next();
+            if (dto.getFiles().containsKey(fileDTO.getFilename())) {
+                fileDTO.setContent(dto.getFiles().get(fileDTO.getFilename()).getContent());
+                children.add(fileDTO.getFilename());
+            } else {
+                updated = true;
+                iterator.remove();
+            }
+        }
+
+        // traverse latest files to add missing items if gist changed
+        for (GistFileDTO fileDTO : dto.getFiles().values()) {
+            if (!children.contains(fileDTO.getFilename())) {
+                updated = true;
+                getFiles().add(fileDTO);
+            }
+        }
+
+        return updated;
     }
 }

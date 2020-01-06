@@ -4,6 +4,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.ui.popup.PopupStep;
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBComboBoxLabel;
 import com.intellij.util.SmartList;
@@ -33,7 +34,8 @@ class CustomDropDownLink extends JBComboBoxLabel {
             this.icons.addAll(Arrays.asList(icons));
         }
 
-        setForeground(JBUI.CurrentTheme.Link.linkColor());
+//        setForeground(JBColor.link());
+
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -93,6 +95,11 @@ class CustomDropDownLink extends JBComboBoxLabel {
             public int getDefaultOptionIndex() {
                 return items.indexOf(selectedItem);
             }
+
+//            @Override
+//            public Color getForegroundFor(String val) {
+//                return JBColor.link();
+//            }
         };
 
         final ListPopup popup = JBPopupFactory.getInstance().createListPopup(list);
