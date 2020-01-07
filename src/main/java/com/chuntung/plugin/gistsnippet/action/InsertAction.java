@@ -16,6 +16,9 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.IconLoader;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Open dialog to select gist to insert into editor.
+ */
 public class InsertAction extends AnAction implements DumbAware {
     public InsertAction() {
         super(IconLoader.getIcon("/images/gist.png"));

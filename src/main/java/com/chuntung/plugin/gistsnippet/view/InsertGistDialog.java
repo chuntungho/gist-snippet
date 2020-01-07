@@ -1,14 +1,21 @@
 package com.chuntung.plugin.gistsnippet.view;
 
+import com.chuntung.plugin.gistsnippet.action.CustomComboBoxAction;
+import com.chuntung.plugin.gistsnippet.action.DeleteAction;
+import com.chuntung.plugin.gistsnippet.action.OpenInBrowserAction;
 import com.chuntung.plugin.gistsnippet.dto.ScopeEnum;
 import com.chuntung.plugin.gistsnippet.dto.SnippetNodeDTO;
 import com.chuntung.plugin.gistsnippet.dto.SnippetRootNode;
 import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
 import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
+import com.chuntung.plugin.gistsnippet.service.GistException;
 import com.chuntung.plugin.gistsnippet.service.GistSnippetService;
 import com.intellij.ide.BrowserUtil;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.ide.util.treeView.AbstractTreeStructure;
+import com.intellij.notification.*;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
@@ -17,17 +24,19 @@ import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.IconLoader;
-import com.intellij.ui.components.JBComboBoxLabel;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.labels.DropDownLink;
 import com.intellij.ui.components.labels.LinkLabel;
 import com.intellij.ui.tree.AsyncTreeModel;
 import com.intellij.ui.tree.StructureTreeModel;
 import com.intellij.ui.treeStructure.SimpleTree;
-import com.intellij.util.Consumer;
+import com.intellij.ui.treeStructure.actions.CollapseAllAction;
+import com.intellij.ui.treeStructure.actions.ExpandAllAction;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager;
@@ -37,21 +46,23 @@ import javax.swing.*;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
-import javax.swing.tree.TreeSelectionModel;
+import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.Constructor;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 public class InsertGistDialog extends DialogWrapper {
+    public static final String SPLIT_LEFT_WIDTH = "InsertGistDialog.yoursSplitLeftWidth";
     private JPanel mainPanel;
     private JBTabbedPane tabbedPane;
     private LinkLabel<?> yoursTabTitle;
     private JSplitPane yoursSplitPane;
     private JTree snippetTree;
     private Editor editor;
-    private JBComboBoxLabel scopeDropDownLink;
-    private DropDownLink typeDropDownLink;
 
     private JButton searchButton;
     private JTextField textField1;
@@ -64,11 +75,16 @@ public class InsertGistDialog extends DialogWrapper {
 
     private SnippetRootNode snippetRoot;
     private StructureTreeModel<CustomTreeStructure> snippetStructure;
+    private CustomComboBoxAction scopeAction;
+    private CustomComboBoxAction typeAction;
+    Icon ownIcon = IconLoader.getIcon("/images/own.png");
+    Icon starredIcon = IconLoader.getIcon("/images/starred.png");
 
     // remember used account
     private GithubAccount currentAccount;
     // remember last preview file
-    private String currentFileUrl;
+    private volatile String showingFileUrl;
+    private volatile String editorFileUrl;
 
     // to be returned
     private String selectedText;
@@ -85,7 +101,6 @@ public class InsertGistDialog extends DialogWrapper {
     private void createUIComponents() {
         // Replace JTree with SimpleTree here due to ui designer fails to preview SimpleTree.
         snippetTree = new SimpleTree();
-        snippetTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
         snippetTree.addTreeSelectionListener(e -> onSelect(e));
         snippetTree.addMouseListener(new MouseAdapter() {
             @Override
@@ -99,6 +114,7 @@ public class InsertGistDialog extends DialogWrapper {
                 }
             }
         });
+        ((SimpleTree) snippetTree).setPopupGroup(getPopupActions(), ActionPlaces.UNKNOWN);
 
         // use tree structure for rendering
         snippetRoot = new SnippetRootNode();
@@ -122,44 +138,21 @@ public class InsertGistDialog extends DialogWrapper {
             snippetTree.setModel(new AsyncTreeModel(snippetStructure, myDisposable));
         }
 
-        // UI designer cannot find custom class when preview, here create manually.
-        Icon ownIcon = IconLoader.getIcon("/images/own.png");
-        Icon starredIcon = IconLoader.getIcon("/images/starred.png");
-        scopeDropDownLink = new CustomDropDownLink("Own",
-                new String[]{"Own", "Starred"}, new Icon[]{ownIcon, starredIcon},
-                item -> {
-                    // select again will load forcibly
-                    String previousItem = ((CustomDropDownLink) scopeDropDownLink).getSelectedItem();
-                    if ("Own".equals(item)) {
-                        loadOwnGist(item.equals(previousItem));
-                    } else if ("Starred".equals(item)) {
-                        loadStarredGist(item.equals(previousItem));
-                    }
-                }
-        );
-
-        // init type drop down link
-        typeDropDownLink = new DropDownLink("All", Arrays.asList("All", "Public", "Secret"), new Consumer() {
-            @Override
-            public void consume(Object item) {
-                Boolean isPublic = "All".equals(item) ? null : "Public".equals(item);
-                // filter by public
-                for (SnippetNodeDTO child : snippetRoot.children()) {
-                    if (isPublic == null) {
-                        child.setVisible(true);
-                    } else {
-                        child.setVisible(isPublic.equals(child.isPublic()));
-                    }
-                }
-
-                // rebuild whole tree
-                snippetStructure.invalidate();
-            }
-        }, true);
-
         // init empty editor
         EditorFactory editorFactory = EditorFactory.getInstance();
         editor = editorFactory.createViewer(editorFactory.createDocument(""), project);
+    }
+
+    private void filterByPublic(Boolean isPublic) {
+        for (SnippetNodeDTO child : snippetRoot.children()) {
+            if (isPublic == null) {
+                child.setVisible(true);
+            } else {
+                child.setVisible(isPublic.equals(child.isPublic()));
+            }
+        }
+
+        snippetStructure.invalidate();
     }
 
     // init after ui-designer setup
@@ -197,21 +190,86 @@ public class InsertGistDialog extends DialogWrapper {
         super.init();
     }
 
-    private void initYoursPane(List<GithubAccount> accountList, GithubAccount defaultAccount) {
-        currentAccount = defaultAccount;
 
-        // visible if has account
-        yoursSplitPane.setVisible(true);
+    // tree popup actions
+    private ActionGroup getPopupActions() {
+        DefaultActionGroup group = new DefaultActionGroup();
+
+        // TODO edit/delete/star/unstar gist
+        group.add(new DeleteAction());
+
+        // open in browser
+        group.add(new OpenInBrowserAction(snippetTree));
+
+        return group;
+    }
+
+    // tree toolbar actions
+    private ActionGroup getToolbarActions() {
+        DefaultActionGroup group = new DefaultActionGroup();
+
+        // scope combo-box
+        group.add(scopeAction = CustomComboBoxAction.create(
+                new AnAction("Own", "Load own gists", ownIcon) {
+                    @Override
+                    public void actionPerformed(@NotNull AnActionEvent e) {
+                        boolean forced = "Own".equals(scopeAction.getText());
+                        loadOwnGist(forced);
+                    }
+                },
+
+                new AnAction("Starred", "Load starred gists", starredIcon) {
+                    @Override
+                    public void actionPerformed(@NotNull AnActionEvent e) {
+                        boolean forced = "Starred".equals(scopeAction.getText());
+                        loadStarredGist(forced);
+                    }
+                })
+        );
+
+        // type combo-box
+        group.add(
+                typeAction = CustomComboBoxAction.create(
+                        DumbAwareAction.create("-Type-", e -> filterByPublic(null))
+                        , DumbAwareAction.create("Public", e -> filterByPublic(true))
+                        , DumbAwareAction.create("Secret", e -> filterByPublic(false))
+                )
+        );
+
+        group.addSeparator();
+
+        group.add(new ExpandAllAction(snippetTree));
+        group.add(new CollapseAllAction(snippetTree));
+
+        return group;
+    }
+
+    private void initYoursPane(List<GithubAccount> accountList, GithubAccount defaultAccount) {
+        UIUtil.removeScrollBorder(yoursSplitPane);
+
+        // init toolbar
+        ActionToolbar actionToolbar = ActionManager.getInstance()
+                .createActionToolbar(ActionPlaces.UNKNOWN, getToolbarActions(), true);
+        actionToolbar.setTargetComponent(mainPanel);
+        ((JPanel) yoursSplitPane.getLeftComponent()).add(actionToolbar.getComponent(), BorderLayout.NORTH);
+
+        // load remembered width
+        int width = PropertiesComponent.getInstance().getInt(SPLIT_LEFT_WIDTH, 220);
+        yoursSplitPane.getLeftComponent().setPreferredSize(new Dimension(width, -1));
 
         // bind editor
         yoursSplitPane.setRightComponent(editor.getComponent());
 
+        // visible if has account
+        yoursSplitPane.setVisible(true);
+
         // display account name on 1st tab
+        currentAccount = defaultAccount;
         yoursTabTitle = new DropDownLink<>(currentAccount, accountList, chosenItem -> {
             if (!chosenItem.equals(currentAccount)) {
                 currentAccount = chosenItem;
                 // load All Own Gist by default
-                ((CustomDropDownLink) scopeDropDownLink).setSelectedItem("Own");
+                scopeAction.reset();
                 loadOwnGist(false);
             }
         }, true);
@@ -230,6 +288,8 @@ public class InsertGistDialog extends DialogWrapper {
         if (selected != null && selected.isLeaf()) {
             // show file content
             GistFileDTO gistFileDTO = getUserObject(selected);
+            showingFileUrl = gistFileDTO.getRawUrl();
+
             // just show cache in view
             if (gistFileDTO.getContent() != null) {
                 showInEditor(gistFileDTO, false);
@@ -240,8 +300,9 @@ public class InsertGistDialog extends DialogWrapper {
         }
     }
 
+    // run in dispatch thread
     private void showInEditor(GistFileDTO fileDTO, boolean forced) {
-        if (!Objects.equals(currentFileUrl, fileDTO.getRawUrl()) || forced) {
+        if (!Objects.equals(editorFileUrl, fileDTO.getRawUrl()) || forced) {
             // setText require write access
             ApplicationManager.getApplication().runWriteAction(() -> {
                 EditorHighlighterFactory highlighterFactory = EditorHighlighterFactory.getInstance();
@@ -249,7 +310,8 @@ public class InsertGistDialog extends DialogWrapper {
 
                 editor.getDocument().setText(fileDTO.getContent());
                 ((EditorEx) editor).setHighlighter(highlighterFactory.createEditorHighlighter(project, fileType));
-                currentFileUrl = fileDTO.getRawUrl();
+                editorFileUrl = fileDTO.getRawUrl();
+
                 setOKActionEnabled(insertable);
             });
         }
@@ -265,17 +327,20 @@ public class InsertGistDialog extends DialogWrapper {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 GistDTO gist = service.getGistDetail(currentAccount, snippet.getId(), forced);
-                if (gist != null) {
-                    boolean shouldUpdate = snippet.update(gist);
-                    if (shouldUpdate) {
-                        // new background task, should invoker later in dispatch thread
-                        snippetStructure.invalidate(new TreePath(parent), true).onSuccess((treePath) -> {
-                            ApplicationManager.getApplication().invokeLater(() -> previewFile());
-                        });
-                    } else {
-                        showInDispatch = true;
-                    }
+                boolean shouldUpdate = snippet.update(gist);
+                if (shouldUpdate) {
+                    // invalidating is in a new background task, should invoker later in dispatch thread
+                    snippetStructure.invalidate(new TreePath(parent), true).onSuccess((treePath) -> {
+                        ApplicationManager.getApplication().invokeLater(() -> previewFile());
+                    });
+                } else {
+                    showInDispatch = true;
                 }
+            }
+
+            @Override
+            public void onThrowable(Throwable e) {
+                notifyWarn("Failed to get Gist files, " + e.getMessage());
             }
 
             @Override
@@ -288,10 +353,8 @@ public class InsertGistDialog extends DialogWrapper {
 
             private void previewFile() {
                 // selected may be changed by user, check before replacing editor content
-                Object currentSelected = snippetTree.getLastSelectedPathComponent();
-                if (currentSelected == selected) {
-                    // load the replaced item
-                    GistFileDTO gistFileDTO = getUserObject(selected);
+                GistFileDTO gistFileDTO = getUserObject(selected);
+                if (Objects.equals(showingFileUrl, gistFileDTO.getRawUrl())) {
                     if (gistFileDTO.getContent() != null) {
                         showInEditor(gistFileDTO, forced);
                     }
@@ -306,18 +369,20 @@ public class InsertGistDialog extends DialogWrapper {
 
     private void loadOwnGist(boolean forced) {
         // reset type filter
-        typeDropDownLink.setText("All");
+        typeAction.reset();
 
         // com.intellij.util.io.HttpRequests#process does not allow Network accessed in dispatch thread or read action
         // start a background task to bypass api limitation
         new Task.Backgroundable(project, "Loading own gists...") {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                List<GistDTO> ownGist = service.queryOwnGist(currentAccount, forced);
-                // non-modal task should not invoke onSuccess() in modal dialog initialization.
-                // it will be blocked in dispatch thread by modal dialog, here just run in background
-                if (ownGist != null) {
+                try {
+                    List<GistDTO> ownGist = service.queryOwnGist(currentAccount, forced);
+                    // non-modal task should not invoke onSuccess() in modal dialog initialization.
+                    // it will be blocked in dispatch thread by modal dialog, here just run in background
                     renderTree(ownGist, ScopeEnum.OWN);
+                } catch (GistException e) {
+                    notifyWarn("Failed to load own gists, error: " + e.getMessage());
                 }
             }
         }.queue();
@@ -325,21 +390,23 @@ public class InsertGistDialog extends DialogWrapper {
 
     private void loadStarredGist(boolean forced) {
         // reset type filter
-        typeDropDownLink.setText("All");
+        typeAction.reset();
 
         new Task.Backgroundable(project, "Loading starred gists...") {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                List<GistDTO> starredGist = service.queryStarredGist(currentAccount, forced);
-                if (starredGist != null) {
+                try {
+                    List<GistDTO> starredGist = service.queryStarredGist(currentAccount, forced);
                     renderTree(starredGist, ScopeEnum.STARRED);
+                } catch (GistException e) {
+                    notifyWarn("Failed to load starred gists, error: " + e.getMessage());
                 }
             }
         }.queue();
     }
 
     private void renderTree(List<GistDTO> gistList, ScopeEnum scope) {
-        snippetRoot.setSetChildren(gistList, scope);
+        snippetRoot.resetChildren(gistList, scope);
         snippetStructure.invalidate();
     }
 
@@ -384,7 +451,16 @@ public class InsertGistDialog extends DialogWrapper {
         if (editor != null) {
             EditorFactory.getInstance().releaseEditor(editor);
         }
+
+        // remember left width
+        PropertiesComponent.getInstance().setValue(SPLIT_LEFT_WIDTH, yoursSplitPane.getLeftComponent().getWidth(), 220);
         super.dispose();
+    }
+
+    public void notifyWarn(String warn) {
+        NotificationGroup notificationGroup = new NotificationGroup("GistSnippet.NotificationGroup", NotificationDisplayType.BALLOON, true);
+        Notification notification = notificationGroup.createNotification(warn, NotificationType.WARNING);
+        Notifications.Bus.notify(notification, project);
     }
 
     /**

@@ -221,9 +221,9 @@ public class SnippetNodeDTO extends SimpleNode {
     }
 
     private static void parseDescription(GistDTO dto, SnippetNodeDTO node) {
+        node.setTitle(null);
+        node.setTags(null);
         if (dto.getDescription() == null || dto.getDescription().isEmpty()) {
-            node.setTitle(null);
-            node.setTags(null);
             // set description as first file name if empty
             for (GistFileDTO fileDTO : dto.getFiles().values()) {
                 node.setDescription(fileDTO.getFilename());

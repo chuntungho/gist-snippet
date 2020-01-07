@@ -19,6 +19,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * @deprecated use {@link com.chuntung.plugin.gistsnippet.action.CustomComboBoxAction} for toolbar
+ */
 class CustomDropDownLink extends JBComboBoxLabel {
     private final JLabel leftIcon = new JLabel("", null, SwingConstants.CENTER);
     private final List<String> items = new SmartList<>();

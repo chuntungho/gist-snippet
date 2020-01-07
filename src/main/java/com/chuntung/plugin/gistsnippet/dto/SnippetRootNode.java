@@ -24,7 +24,7 @@ public class SnippetRootNode extends SimpleNode {
         return children == null ? NO_CHILDREN : children.toArray(NO_CHILDREN);
     }
 
-    public void setSetChildren(List<GistDTO> gistList, ScopeEnum scope) {
+    public void resetChildren(List<GistDTO> gistList, ScopeEnum scope) {
         List<SnippetNodeDTO> children = new ArrayList<>(gistList.size());
         for (GistDTO gistDTO : gistList) {
             children.add(SnippetNodeDTO.of(gistDTO, scope));

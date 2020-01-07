@@ -6,8 +6,6 @@ buildscript {
 }
 
 plugins {
-//    id 'java'
-//    id 'idea'
     id 'org.jetbrains.intellij' version '0.4.15'
 }
 
@@ -15,10 +13,6 @@ group 'com.chuntung.plugin'
 version "${version}"
 
 sourceCompatibility = JavaVersion.VERSION_1_8
-
-//apply plugin: 'java'
-//apply plugin: 'idea'
-//apply plugin: 'org.jetbrains.intellij'
 
 repositories {
     mavenCentral()

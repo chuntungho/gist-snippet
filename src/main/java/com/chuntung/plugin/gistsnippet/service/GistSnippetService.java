@@ -50,9 +50,8 @@ public class GistSnippetService {
                 result.set(gistList);
                 return putIntoCache(gistList);
             } catch (IOException e) {
-                logger.info("Failed to query own gist, error: " + e.getMessage());
-                notifyWarn("Failed to load own Gist, " + e.getMessage(), null);
-                return null;
+                logger.info("Failed to query own gists, error: " + e.getMessage());
+                throw new GistException(e);
             }
         });
 
@@ -109,9 +108,8 @@ public class GistSnippetService {
                 result.set(gistList);
                 return putIntoCache(gistList);
             } catch (IOException e) {
-                logger.info("Failed to query starred gist, error: " + e.getMessage());
-                notifyWarn("Failed to load starred Gist, " + e.getMessage(), null);
-                return null;
+                logger.info("Failed to query starred gists, error: " + e.getMessage());
+                throw new GistException(e);
             }
         });
 
@@ -137,16 +135,8 @@ public class GistSnippetService {
                 return executor.execute(request);
             } catch (IOException e) {
                 logger.info("Failed to get gist detail, error: " + e.getMessage());
-                notifyWarn("Failed to get Gist files, " + e.getMessage(), null);
-                return null;
+                throw new GistException(e);
             }
         });
-    }
-
-    // TODO catch exception at invoker side??
-    public void notifyWarn(String warn, Project project) {
-        NotificationGroup notificationGroup = new NotificationGroup("GistSnippet.NotificationGroup", NotificationDisplayType.BALLOON, true);
-        Notification notification = notificationGroup.createNotification(warn, NotificationType.WARNING);
-        Notifications.Bus.notify(notification, project);
     }
 }
