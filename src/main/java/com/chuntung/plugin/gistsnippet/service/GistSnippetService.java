@@ -153,6 +153,7 @@ public class GistSnippetService {
             GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
             for (String gistId : gistIds) {
                 String url = String.format(GIST_DETAIL_URL, gistId);
+                // 2018.3
                 GithubApiRequest.Delete delete = new GithubApiRequest.Delete(url);
                 executor.execute(delete);
                 gistCache.remove(gistId);

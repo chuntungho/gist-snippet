@@ -146,9 +146,11 @@ public class InsertGistDialog extends DialogWrapper {
             treeModel.addTreeModelListener(new TreeModelAdapter() {
                 protected void process(@NotNull TreeModelEvent event, @NotNull EventType type) {
                     if (snippetRoot.children().size() > 0 && snippetTree.getSelectionCount() == 0) {
-                        snippetStructure.getInvoker().runOrInvokeLater(() -> {
-                            snippetTree.setSelectionRow(0);
-                            snippetTree.requestFocusInWindow();
+                        UIUtil.invokeLaterIfNeeded(() -> {
+                            if (snippetRoot.children().size() > 0 && snippetTree.getSelectionCount() == 0) {
+                                snippetTree.setSelectionRow(0);
+                                snippetTree.requestFocusInWindow();
+                            }
                         });
                     }
                 }
