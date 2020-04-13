@@ -10,6 +10,7 @@ import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
 import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
 import com.chuntung.plugin.gistsnippet.service.GistException;
 import com.chuntung.plugin.gistsnippet.service.GistSnippetService;
+import com.chuntung.plugin.gistsnippet.service.GithubAccountHolder;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.ide.util.treeView.AbstractTreeStructure;
@@ -19,6 +20,7 @@ import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory;
 import com.intellij.openapi.fileTypes.FileType;
@@ -37,12 +39,14 @@ import com.intellij.ui.treeStructure.SimpleTree;
 import com.intellij.ui.treeStructure.actions.CollapseAllAction;
 import com.intellij.ui.treeStructure.actions.ExpandAllAction;
 import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.tree.TreeModelAdapter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 
 import javax.swing.*;
+import javax.swing.event.TreeModelEvent;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
@@ -70,7 +74,7 @@ public class InsertGistDialog extends DialogWrapper {
     private JComboBox sortByComboBox;
 
     private Project project;
-    private boolean insertable;
+    private final boolean insertable;
     private GistSnippetService service;
 
     private SnippetRootNode snippetRoot;
@@ -80,8 +84,6 @@ public class InsertGistDialog extends DialogWrapper {
     Icon ownIcon = IconLoader.getIcon("/images/own.png");
     Icon starredIcon = IconLoader.getIcon("/images/starred.png");
 
-    // remember used account
-    private GithubAccount currentAccount;
     // remember last preview file
     private volatile String showingFileUrl;
     private volatile String editorFileUrl;
@@ -89,11 +91,15 @@ public class InsertGistDialog extends DialogWrapper {
     // to be returned
     private String selectedText;
 
+    // account holder in project level
+    private GithubAccountHolder accountHolder;
+
     public InsertGistDialog(Project project, boolean insertable) {
         super(project);
         this.project = project;
         this.insertable = insertable;
         this.service = GistSnippetService.getInstance();
+        accountHolder = GithubAccountHolder.getInstance(project);
         init(project);
     }
 
@@ -114,7 +120,6 @@ public class InsertGistDialog extends DialogWrapper {
                 }
             }
         });
-        ((SimpleTree) snippetTree).setPopupGroup(getPopupActions(), ActionPlaces.UNKNOWN);
 
         // use tree structure for rendering
         snippetRoot = new SnippetRootNode();
@@ -135,7 +140,21 @@ public class InsertGistDialog extends DialogWrapper {
             // NOOP
         }
         if (snippetStructure != null) {
-            snippetTree.setModel(new AsyncTreeModel(snippetStructure, myDisposable));
+            AsyncTreeModel treeModel = new AsyncTreeModel(snippetStructure, myDisposable);
+
+            // make it focusable after rendering
+            treeModel.addTreeModelListener(new TreeModelAdapter() {
+                protected void process(@NotNull TreeModelEvent event, @NotNull EventType type) {
+                    if (snippetRoot.children().size() > 0 && snippetTree.getSelectionCount() == 0) {
+                        snippetStructure.getInvoker().runOrInvokeLater(() -> {
+                            snippetTree.setSelectionRow(0);
+                            snippetTree.requestFocusInWindow();
+                        });
+                    }
+                }
+            });
+
+            snippetTree.setModel(treeModel);
         }
 
         // init empty editor
@@ -164,13 +183,16 @@ public class InsertGistDialog extends DialogWrapper {
         }
         // to be enabled after file loaded
         setOKActionEnabled(false);
-        // focus cancel button
+        // focus cancel button by default
         getCancelAction().putValue(FOCUSED_ACTION, true);
+
+        // after project field assigned
+        ((SimpleTree) snippetTree).setPopupGroup(getPopupActions(), ActionPlaces.UNKNOWN);
 
         GithubAuthenticationManager authenticationManager = GithubAuthenticationManager.getInstance();
         Set<GithubAccount> accounts = authenticationManager.getAccounts();
         if (accounts != null && accounts.size() > 0) {
-            initYoursPane(new ArrayList<>(accounts), authenticationManager.getSingleOrDefaultAccount(project));
+            initYoursPane(new ArrayList<>(accounts));
         } else {
             // hide yours tab content without github account
             yoursSplitPane.setVisible(false);
@@ -178,7 +200,7 @@ public class InsertGistDialog extends DialogWrapper {
                 boolean existing = authenticationManager.ensureHasAccounts(project);
                 if (existing) {
                     List<GithubAccount> accountList = new ArrayList<>(authenticationManager.getAccounts());
-                    initYoursPane(accountList, authenticationManager.getSingleOrDefaultAccount(project));
+                    initYoursPane(accountList);
                 }
             });
             tabbedPane.setTabComponentAt(0, yoursTabTitle);
@@ -195,8 +217,8 @@ public class InsertGistDialog extends DialogWrapper {
     private ActionGroup getPopupActions() {
         DefaultActionGroup group = new DefaultActionGroup();
 
-        // TODO edit/delete/star/unstar gist
-        group.add(new DeleteAction());
+        // delete gist
+        group.add(new DeleteAction(snippetTree, snippetStructure, snippetRoot, project));
 
         // open in browser
         group.add(new OpenInBrowserAction(snippetTree));
@@ -244,8 +266,10 @@ public class InsertGistDialog extends DialogWrapper {
         return group;
     }
 
-    private void initYoursPane(List<GithubAccount> accountList, GithubAccount defaultAccount) {
+    private void initYoursPane(List<GithubAccount> accountList) {
         UIUtil.removeScrollBorder(yoursSplitPane);
+
+        yoursSplitPane.setVisible(true);
 
         // init toolbar
         ActionToolbar actionToolbar = ActionManager.getInstance()
@@ -260,14 +284,15 @@ public class InsertGistDialog extends DialogWrapper {
         // bind editor
         yoursSplitPane.setRightComponent(editor.getComponent());
 
-        // visible if has account
-        yoursSplitPane.setVisible(true);
-
         // display account name on 1st tab
-        currentAccount = defaultAccount;
-        yoursTabTitle = new DropDownLink<>(currentAccount, accountList, chosenItem -> {
-            if (!chosenItem.equals(currentAccount)) {
-                currentAccount = chosenItem;
+        if (accountHolder.getAccount() == null) {
+            accountHolder.setAccount(accountList.get(0));
+        }
+
+        yoursTabTitle = new DropDownLink<>(accountHolder.getAccount(), accountList, chosenItem -> {
+            if (!chosenItem.equals(accountHolder.getAccount())) {
+                accountHolder.setAccount(chosenItem);
+
                 // load All Own Gist by default
                 scopeAction.reset();
                 loadOwnGist(false);
@@ -285,7 +310,7 @@ public class InsertGistDialog extends DialogWrapper {
         if (treePath != null) {
             selected = (DefaultMutableTreeNode) treePath.getLastPathComponent();
         }
-        if (selected != null && selected.isLeaf()) {
+        if (selected != null && selected.isLeaf() && selected.getUserObject() instanceof GistFileDTO) {
             // show file content
             GistFileDTO gistFileDTO = getUserObject(selected);
             showingFileUrl = gistFileDTO.getRawUrl();
@@ -312,6 +337,11 @@ public class InsertGistDialog extends DialogWrapper {
                 ((EditorEx) editor).setHighlighter(highlighterFactory.createEditorHighlighter(project, fileType));
                 editorFileUrl = fileDTO.getRawUrl();
 
+                // make it focusable
+                editor.getCaretModel().moveToLogicalPosition(new LogicalPosition(0, 0));
+                editor.getContentComponent().requestFocusInWindow();
+                snippetTree.requestFocusInWindow();
+
                 setOKActionEnabled(insertable);
             });
         }
@@ -326,7 +356,7 @@ public class InsertGistDialog extends DialogWrapper {
 
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                GistDTO gist = service.getGistDetail(currentAccount, snippet.getId(), forced);
+                GistDTO gist = service.getGistDetail(accountHolder.getAccount(), snippet.getId(), forced);
                 boolean shouldUpdate = snippet.update(gist);
                 if (shouldUpdate) {
                     // invalidating is in a new background task, should invoker later in dispatch thread
@@ -377,7 +407,7 @@ public class InsertGistDialog extends DialogWrapper {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
-                    List<GistDTO> ownGist = service.queryOwnGist(currentAccount, forced);
+                    List<GistDTO> ownGist = service.queryOwnGist(accountHolder.getAccount(), forced);
                     // non-modal task should not invoke onSuccess() in modal dialog initialization.
                     // it will be blocked in dispatch thread by modal dialog, here just run in background
                     renderTree(ownGist, ScopeEnum.OWN);
@@ -396,7 +426,7 @@ public class InsertGistDialog extends DialogWrapper {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
-                    List<GistDTO> starredGist = service.queryStarredGist(currentAccount, forced);
+                    List<GistDTO> starredGist = service.queryStarredGist(accountHolder.getAccount(), forced);
                     renderTree(starredGist, ScopeEnum.STARRED);
                 } catch (GistException e) {
                     notifyWarn("Failed to load starred gists, error: " + e.getMessage());

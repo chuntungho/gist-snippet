@@ -15,8 +15,10 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- core application service -->
-        <applicationService
-                serviceImplementation="com.chuntung.plugin.gistsnippet.service.GistSnippetService"/>
+        <applicationService serviceImplementation="com.chuntung.plugin.gistsnippet.service.GistSnippetService"/>
+
+        <!-- Github account holder in project level -->
+        <projectService serviceImplementation="com.chuntung.plugin.gistsnippet.service.GithubAccountHolder"/>
     </extensions>
 
     <actions>
@@ -25,6 +27,8 @@
                 description="Search gist and then insert selection into current editor"
                 class="com.chuntung.plugin.gistsnippet.action.InsertAction">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="Github.Create.Gist"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt I" />
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="control alt I" replace-all="true"/>
         </action>
     </actions>
 </idea-plugin>

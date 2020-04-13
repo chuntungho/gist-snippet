@@ -1,0 +1,5 @@
+<ul>
+<li>Compatible with latest IDE</li>
+<li>Fixed multiple Github accounts issue</li>
+<li>Supported deleting gists</li>
+</ul>

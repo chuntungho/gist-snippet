@@ -1,10 +1,8 @@
 package com.chuntung.plugin.gistsnippet.service;
 
 import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
-import com.intellij.notification.*;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.project.Project;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.plugins.github.api.GithubApiRequest;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutor;
@@ -17,6 +15,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * API Doc: https://developer.github.com/v3/gists/
+ */
 public class GistSnippetService {
     public static final Logger logger = Logger.getInstance(GistSnippetService.class);
 
@@ -78,11 +79,12 @@ public class GistSnippetService {
         return null;
     }
 
-    private List<GistDTO> decideResult(GithubAccount account, AtomicReference<List<GistDTO>> result, List<String> idList) {
-        if (result.get() == null && idList != null) {
+    private List<GistDTO> decideResult(GithubAccount account, AtomicReference<List<GistDTO>> result, List<String> cacheList) {
+        // load from cache
+        if (result.get() == null && cacheList != null) {
             // N + 1
-            List<GistDTO> gistList = new ArrayList<>(idList.size());
-            for (String gistId : idList) {
+            List<GistDTO> gistList = new ArrayList<>(cacheList.size());
+            for (String gistId : cacheList) {
                 gistList.add(getGistDetail(account, gistId, false));
             }
             result.set(gistList);
@@ -100,7 +102,7 @@ public class GistSnippetService {
         }
 
         AtomicReference<List<GistDTO>> result = new AtomicReference<>();
-        List<String> list = scopeCache.computeIfAbsent(key, (k) -> {
+        List<String> cacheList = scopeCache.computeIfAbsent(key, (k) -> {
             try {
                 GithubApiRequest.Get.JsonList<GistDTO> request = new GithubApiRequest.Get.JsonList<>(STARRED_GISTS_URL, GistDTO.class, MIME_TYPE);
                 GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
@@ -113,7 +115,7 @@ public class GistSnippetService {
             }
         });
 
-        return decideResult(account, result, list);
+        return decideResult(account, result, cacheList);
     }
 
     // queryPublicGist
@@ -122,6 +124,12 @@ public class GistSnippetService {
         return null;
     }
 
+    /**
+     * @param account
+     * @param gistId
+     * @param forced  true to load file content from remote server
+     * @return
+     */
     public GistDTO getGistDetail(GithubAccount account, String gistId, boolean forced) {
         if (forced) {
             gistCache.computeIfPresent(gistId, (k, v) -> gistCache.remove(k));
@@ -129,8 +137,8 @@ public class GistSnippetService {
 
         return gistCache.computeIfAbsent(gistId, (k) -> {
             String url = String.format(GIST_DETAIL_URL, gistId);
+            GithubApiRequest.Get.Json<GistDTO> request = new GithubApiRequest.Get.Json(url, GistDTO.class, MIME_TYPE);
             try {
-                GithubApiRequest.Get.Json<GistDTO> request = new GithubApiRequest.Get.Json(url, GistDTO.class, MIME_TYPE);
                 GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
                 return executor.execute(request);
             } catch (IOException e) {
@@ -138,5 +146,20 @@ public class GistSnippetService {
                 throw new GistException(e);
             }
         });
+    }
+
+    public void deleteGist(GithubAccount account, List<String> gistIds) {
+        try {
+            GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
+            for (String gistId : gistIds) {
+                String url = String.format(GIST_DETAIL_URL, gistId);
+                GithubApiRequest.Delete delete = new GithubApiRequest.Delete(url);
+                executor.execute(delete);
+                gistCache.remove(gistId);
+            }
+        } catch (IOException e) {
+            logger.info("Failed to delete gist, error: " + e.getMessage());
+            throw new GistException(e);
+        }
     }
 }
