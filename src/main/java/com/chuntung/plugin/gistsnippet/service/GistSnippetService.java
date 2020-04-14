@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ */
+
 package com.chuntung.plugin.gistsnippet.service;
 
 import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
@@ -153,10 +157,15 @@ public class GistSnippetService {
             GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
             for (String gistId : gistIds) {
                 String url = String.format(GIST_DETAIL_URL, gistId);
-                // 2018.3
-                GithubApiRequest.Delete delete = new GithubApiRequest.Delete(url);
+                // since 2019.1
+                GithubApiRequest.Delete.Json<String> delete = new GithubApiRequest.Delete.Json<>(url, null, String.class);
                 executor.execute(delete);
                 gistCache.remove(gistId);
+            }
+            String key = account.toString() + "#own";
+            List<String> cacheList = scopeCache.get(key);
+            if (cacheList != null) {
+                cacheList.removeAll(gistIds);
             }
         } catch (IOException e) {
             logger.info("Failed to delete gist, error: " + e.getMessage());
