@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ */
+
 package com.chuntung.plugin.gistsnippet.action;
 
 import com.chuntung.plugin.gistsnippet.view.InsertGistDialog;

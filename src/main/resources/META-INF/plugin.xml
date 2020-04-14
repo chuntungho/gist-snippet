@@ -1,3 +1,7 @@
+<!--
+  ~ Copyright (c) 2020 Tony Ho. Some rights reserved.
+  -->
+
 <idea-plugin>
     <id>com.chuntung.plugin.gistsnippet</id>
     <name>Gist Snippet</name>
