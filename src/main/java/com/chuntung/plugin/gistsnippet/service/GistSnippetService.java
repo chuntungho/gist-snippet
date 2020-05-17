@@ -12,6 +12,7 @@ import org.jetbrains.plugins.github.api.GithubApiRequest;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutor;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
+import org.jetbrains.plugins.github.exceptions.GithubJsonException;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -159,7 +160,11 @@ public class GistSnippetService {
                 String url = String.format(GIST_DETAIL_URL, gistId);
                 // since 2019.1
                 GithubApiRequest.Delete.Json<String> delete = new GithubApiRequest.Delete.Json<>(url, null, String.class);
-                executor.execute(delete);
+                try {
+                    executor.execute(delete);
+                } catch (GithubJsonException e) {
+                    logger.debug("Ignored exception due to no result returned by API");
+                }
                 gistCache.remove(gistId);
             }
             String key = account.toString() + "#own";

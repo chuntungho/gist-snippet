@@ -7,6 +7,7 @@ package com.chuntung.plugin.gistsnippet.view;
 import com.chuntung.plugin.gistsnippet.action.CustomComboBoxAction;
 import com.chuntung.plugin.gistsnippet.action.DeleteAction;
 import com.chuntung.plugin.gistsnippet.action.OpenInBrowserAction;
+import com.chuntung.plugin.gistsnippet.action.ReloadAction;
 import com.chuntung.plugin.gistsnippet.dto.ScopeEnum;
 import com.chuntung.plugin.gistsnippet.dto.SnippetNodeDTO;
 import com.chuntung.plugin.gistsnippet.dto.SnippetRootNode;
@@ -15,6 +16,7 @@ import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
 import com.chuntung.plugin.gistsnippet.service.GistException;
 import com.chuntung.plugin.gistsnippet.service.GistSnippetService;
 import com.chuntung.plugin.gistsnippet.service.GithubAccountHolder;
+import com.intellij.icons.AllIcons;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.ide.util.treeView.AbstractTreeStructure;
@@ -34,6 +36,7 @@ import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.IconLoader;
+import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.labels.DropDownLink;
 import com.intellij.ui.components.labels.LinkLabel;
@@ -55,8 +58,6 @@ import javax.swing.event.TreeSelectionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreePath;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
@@ -76,6 +77,7 @@ public class InsertGistDialog extends DialogWrapper {
     private JTextField textField1;
     private JComboBox languageComboBox;
     private JComboBox sortByComboBox;
+    private JScrollPane scrollPane;
 
     private Project project;
     private final boolean insertable;
@@ -112,18 +114,8 @@ public class InsertGistDialog extends DialogWrapper {
         // Replace JTree with SimpleTree here due to ui designer fails to preview SimpleTree.
         snippetTree = new SimpleTree();
         snippetTree.addTreeSelectionListener(e -> onSelect(e));
-        snippetTree.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                // double click to load forcibly
-                if (e.getButton() == e.BUTTON1 && e.getClickCount() == 2) {
-                    DefaultMutableTreeNode selected = (DefaultMutableTreeNode) ((JTree) e.getComponent()).getLastSelectedPathComponent();
-                    if (selected != null && selected.isLeaf()) {
-                        loadFileContent(project, selected, true);
-                    }
-                }
-            }
-        });
+
+        scrollPane = ScrollPaneFactory.createScrollPane(snippetTree, true);
 
         // use tree structure for rendering
         snippetRoot = new SnippetRootNode();
@@ -226,7 +218,13 @@ public class InsertGistDialog extends DialogWrapper {
         // delete gist
         group.add(new DeleteAction(snippetTree, snippetStructure, snippetRoot, project));
 
-        // open in browser
+        // reload gist file
+        group.add(new ReloadAction(snippetTree, e -> {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) snippetTree.getLastSelectedPathComponent();
+            loadFileContent(project, node, true);
+        }));
+
+        // open in browser for gist or file
         group.add(new OpenInBrowserAction(snippetTree));
 
         return group;
@@ -264,6 +262,18 @@ public class InsertGistDialog extends DialogWrapper {
                 )
         );
 
+        // refresh own/starred
+        group.add(new AnAction("Refresh", "Refresh gist list", AllIcons.Actions.Refresh) {
+            @Override
+            public void actionPerformed(@NotNull AnActionEvent e) {
+                if ("Own".equals(scopeAction.getText())) {
+                    loadOwnGist(true);
+                } else {
+                    loadStarredGist(true);
+                }
+            }
+        });
+
         group.addSeparator();
 
         group.add(new ExpandAllAction(snippetTree));
@@ -273,8 +283,6 @@ public class InsertGistDialog extends DialogWrapper {
     }
 
     private void initYoursPane(List<GithubAccount> accountList) {
-        UIUtil.removeScrollBorder(yoursSplitPane);
-
         yoursSplitPane.setVisible(true);
 
         // init toolbar
@@ -284,7 +292,7 @@ public class InsertGistDialog extends DialogWrapper {
         ((JPanel) yoursSplitPane.getLeftComponent()).add(actionToolbar.getComponent(), BorderLayout.NORTH);
 
         // load remembered width
-        int width = PropertiesComponent.getInstance().getInt(SPLIT_LEFT_WIDTH, 220);
+        int width = PropertiesComponent.getInstance().getInt(SPLIT_LEFT_WIDTH, 240);
         yoursSplitPane.getLeftComponent().setPreferredSize(new Dimension(width, -1));
 
         // bind editor
@@ -404,8 +412,10 @@ public class InsertGistDialog extends DialogWrapper {
     }
 
     private void loadOwnGist(boolean forced) {
-        // reset type filter
-        typeAction.reset();
+        // reset type filter for switch
+        if (!forced) {
+            typeAction.reset();
+        }
 
         // com.intellij.util.io.HttpRequests#process does not allow Network accessed in dispatch thread or read action
         // start a background task to bypass api limitation
@@ -443,7 +453,15 @@ public class InsertGistDialog extends DialogWrapper {
 
     private void renderTree(List<GistDTO> gistList, ScopeEnum scope) {
         snippetRoot.resetChildren(gistList, scope);
-        snippetStructure.invalidate();
+
+        // filter by type if selected
+        if ("Public".equals(typeAction.getText())) {
+            filterByPublic(true);
+        } else if ("Secret".equals(typeAction.getText())) {
+            filterByPublic(false);
+        } else {
+            snippetStructure.invalidate();
+        }
     }
 
     @Nullable
