@@ -319,12 +319,16 @@ public class InsertGistDialog extends DialogWrapper {
     }
 
     private void onSelect(TreeSelectionEvent e) {
-        DefaultMutableTreeNode selected = null;
         TreePath treePath = e.getNewLeadSelectionPath();
-        if (treePath != null) {
-            selected = (DefaultMutableTreeNode) treePath.getLastPathComponent();
+        if (treePath == null || treePath.getLastPathComponent() == null) {
+            return;
         }
-        if (selected != null && selected.isLeaf() && selected.getUserObject() instanceof GistFileDTO) {
+        DefaultMutableTreeNode selected = (DefaultMutableTreeNode) treePath.getLastPathComponent();
+        // show the first file when gist item is selected
+        if (selected.getUserObject() instanceof SnippetNodeDTO && selected.getChildCount() > 0) {
+            selected = (DefaultMutableTreeNode) selected.getFirstChild();
+        }
+        if (selected.getUserObject() instanceof GistFileDTO) {
             // show file content
             GistFileDTO gistFileDTO = getUserObject(selected);
             showingFileUrl = gistFileDTO.getRawUrl();
