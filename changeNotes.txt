@@ -1,3 +1,4 @@
 <ul>
-<li>Fixed minor issues</li>
+<li>Migrate deprecated apis</li>
+<li>Improve ui operation</li>
 </ul>

@@ -18,6 +18,9 @@ import com.chuntung.plugin.gistsnippet.service.GistSnippetService;
 import com.chuntung.plugin.gistsnippet.service.GithubAccountHolder;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.BrowserUtil;
+import com.intellij.ide.CommonActionsManager;
+import com.intellij.ide.DefaultTreeExpander;
+import com.intellij.ide.TreeExpander;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.ide.util.treeView.AbstractTreeStructure;
 import com.intellij.notification.*;
@@ -38,13 +41,10 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.components.JBTabbedPane;
-import com.intellij.ui.components.labels.DropDownLink;
 import com.intellij.ui.components.labels.LinkLabel;
 import com.intellij.ui.tree.AsyncTreeModel;
 import com.intellij.ui.tree.StructureTreeModel;
 import com.intellij.ui.treeStructure.SimpleTree;
-import com.intellij.ui.treeStructure.actions.CollapseAllAction;
-import com.intellij.ui.treeStructure.actions.ExpandAllAction;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeModelAdapter;
 import org.jetbrains.annotations.NotNull;
@@ -66,12 +66,16 @@ import java.util.Set;
 
 public class InsertGistDialog extends DialogWrapper {
     public static final String SPLIT_LEFT_WIDTH = "InsertGistDialog.yoursSplitLeftWidth";
+    private static final NotificationGroup notificationGroup =
+            new NotificationGroup("GistSnippet.NotificationGroup", NotificationDisplayType.BALLOON, true);;
+
     private JPanel mainPanel;
     private JBTabbedPane tabbedPane;
     private LinkLabel<?> yoursTabTitle;
     private JSplitPane yoursSplitPane;
     private JTree snippetTree;
     private Editor editor;
+    private TreeExpander myTreeExpander;
 
     private JButton searchButton;
     private JTextField textField1;
@@ -87,8 +91,8 @@ public class InsertGistDialog extends DialogWrapper {
     private StructureTreeModel<CustomTreeStructure> snippetStructure;
     private CustomComboBoxAction scopeAction;
     private CustomComboBoxAction typeAction;
-    Icon ownIcon = IconLoader.getIcon("/images/own.png");
-    Icon starredIcon = IconLoader.getIcon("/images/starred.png");
+    Icon ownIcon = IconLoader.getIcon("/images/own.png", InsertGistDialog.class);
+    Icon starredIcon = IconLoader.getIcon("/images/starred.png", InsertGistDialog.class);
 
     // remember last preview file
     private volatile String showingFileUrl;
@@ -154,6 +158,7 @@ public class InsertGistDialog extends DialogWrapper {
 
             snippetTree.setModel(treeModel);
         }
+        myTreeExpander = new DefaultTreeExpander(snippetTree);
 
         // init empty editor
         EditorFactory editorFactory = EditorFactory.getInstance();
@@ -194,11 +199,14 @@ public class InsertGistDialog extends DialogWrapper {
         } else {
             // hide yours tab content without github account
             yoursSplitPane.setVisible(false);
-            yoursTabTitle = LinkLabel.create("Add GitHub Account", () -> {
-                boolean existing = authenticationManager.ensureHasAccounts(project);
-                if (existing) {
-                    List<GithubAccount> accountList = new ArrayList<>(authenticationManager.getAccounts());
-                    initYoursPane(accountList);
+            yoursTabTitle = new CustomActionLink("Add GitHub Account", new AnAction() {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    boolean existing = authenticationManager.ensureHasAccounts(project);
+                    if (existing) {
+                        List<GithubAccount> accountList = new ArrayList<>(authenticationManager.getAccounts());
+                        initYoursPane(accountList);
+                    }
                 }
             });
             tabbedPane.setTabComponentAt(0, yoursTabTitle);
@@ -276,8 +284,9 @@ public class InsertGistDialog extends DialogWrapper {
 
         group.addSeparator();
 
-        group.add(new ExpandAllAction(snippetTree));
-        group.add(new CollapseAllAction(snippetTree));
+
+        group.add(CommonActionsManager.getInstance().createExpandAllAction(myTreeExpander, mainPanel));
+        group.add(CommonActionsManager.getInstance().createCollapseAllAction(myTreeExpander, mainPanel));
 
         return group;
     }
@@ -303,7 +312,7 @@ public class InsertGistDialog extends DialogWrapper {
             accountHolder.setAccount(accountList.get(0));
         }
 
-        yoursTabTitle = new DropDownLink<>(accountHolder.getAccount(), accountList, chosenItem -> {
+        yoursTabTitle = new CustomDropDownLink<>(accountHolder.getAccount(), accountList, chosenItem -> {
             if (!chosenItem.equals(accountHolder.getAccount())) {
                 accountHolder.setAccount(chosenItem);
 
@@ -516,7 +525,6 @@ public class InsertGistDialog extends DialogWrapper {
     }
 
     public void notifyWarn(String warn) {
-        NotificationGroup notificationGroup = new NotificationGroup("GistSnippet.NotificationGroup", NotificationDisplayType.BALLOON, true);
         Notification notification = notificationGroup.createNotification(warn, NotificationType.WARNING);
         Notifications.Bus.notify(notification, project);
     }

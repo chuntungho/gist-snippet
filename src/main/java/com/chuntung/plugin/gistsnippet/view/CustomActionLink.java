@@ -1,0 +1,121 @@
+/*
+ * Copyright 2000-2016 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.chuntung.plugin.gistsnippet.view;
+
+import com.intellij.openapi.actionSystem.ActionPlaces;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.DataProvider;
+import com.intellij.openapi.actionSystem.PlatformDataKeys;
+import com.intellij.openapi.actionSystem.ex.ActionUtil;
+import com.intellij.ui.components.labels.LinkLabel;
+import com.intellij.ui.components.labels.LinkListener;
+import com.intellij.util.ui.EmptyIcon;
+import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.InputEvent;
+
+/**
+ * @author Konstantin Bulenkov
+ */
+public class CustomActionLink extends LinkLabel<Object> implements DataProvider {
+    private static final EmptyIcon ICON = JBUI.scale(EmptyIcon.create(0, 12));
+    private final AnAction myAction;
+    private final String myPlace = ActionPlaces.UNKNOWN;
+    private InputEvent myEvent;
+    private Color myVisitedColor;
+    private Color myActiveColor;
+    private Color myNormalColor;
+
+    public CustomActionLink(String text, @NotNull AnAction action) {
+        this(text, ICON, action);
+    }
+
+    public CustomActionLink(String text, Icon icon, @NotNull AnAction action) {
+        this(text, icon, action, null);
+    }
+
+    public CustomActionLink(String text, Icon icon, @NotNull AnAction action, @Nullable final Runnable onDone) {
+        super(text, icon);
+        setListener(new LinkListener<Object>() {
+            @Override
+            public void linkSelected(LinkLabel aSource, Object aLinkData) {
+                ActionUtil.invokeAction(myAction, CustomActionLink.this, myPlace, myEvent, onDone);
+            }
+        }, null);
+        myAction = action;
+    }
+
+    @Override
+    public void doClick(InputEvent e) {
+        myEvent = e;
+        super.doClick();
+    }
+
+    @Override
+    protected Color getVisited() {
+        return myVisitedColor == null ? super.getVisited() : myVisitedColor;
+    }
+
+    public Color getActiveColor() {
+        return myActiveColor == null ? super.getActive() : myActiveColor;
+    }
+
+    @Override
+    protected Color getTextColor() {
+        return myUnderline ? getActiveColor() : getNormal();
+    }
+
+    @Override
+    protected Color getNormal() {
+        return myNormalColor == null ? super.getNormal() : myNormalColor;
+    }
+
+    public void setVisitedColor(Color visitedColor) {
+        myVisitedColor = visitedColor;
+    }
+
+    public void setActiveColor(Color activeColor) {
+        myActiveColor = activeColor;
+    }
+
+    public void setNormalColor(Color normalColor) {
+        myNormalColor = normalColor;
+    }
+
+    @Override
+    public Object getData(@NotNull @NonNls String dataId) {
+        if (PlatformDataKeys.DOMINANT_HINT_AREA_RECTANGLE.is(dataId)) {
+            final Point p = SwingUtilities.getRoot(this).getLocationOnScreen();
+            return new Rectangle(p.x, p.y + getHeight(), 0, 0);
+        }
+        if (PlatformDataKeys.CONTEXT_MENU_POINT.is(dataId)) {
+            return SwingUtilities.convertPoint(this, 0, getHeight(), UIUtil.getRootPane(this));
+        }
+        return myAction instanceof DataProvider ? ((DataProvider)myAction).getData(dataId) : null;
+    }
+
+    @TestOnly
+    public AnAction getAction() {
+        return myAction;
+    }
+}

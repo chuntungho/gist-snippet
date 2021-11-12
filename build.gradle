@@ -24,9 +24,9 @@ dependencies {
 
 // See https://github.com/JetBrains/gradle-intellij-plugin/
 intellij {
+    pluginName "Gist Snippet"
     version ideaVersion
     plugins = ["github"]
-    pluginName "Gist Snippet"
     sameSinceUntilBuild Boolean.valueOf(isEAP)
     patchPluginXml {
         untilBuild customUtilBuild

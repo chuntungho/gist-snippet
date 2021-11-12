@@ -1,116 +1,117 @@
-/*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
- */
-
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.chuntung.plugin.gistsnippet.view;
 
+import com.intellij.icons.AllIcons;
+import com.intellij.openapi.ui.popup.IPopupChooserBuilder;
+import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
-import com.intellij.openapi.ui.popup.ListPopup;
-import com.intellij.openapi.ui.popup.PopupStep;
-import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
-import com.intellij.ui.JBColor;
 import com.intellij.ui.awt.RelativePoint;
-import com.intellij.ui.components.JBComboBoxLabel;
-import com.intellij.util.SmartList;
+import com.intellij.ui.components.labels.LinkLabel;
+import com.intellij.util.Consumer;
+import com.intellij.util.containers.Convertor;
 import com.intellij.util.ui.JBUI;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
+import javax.swing.plaf.metal.MetalLabelUI;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.util.Arrays;
 import java.util.List;
-import java.util.function.Consumer;
 
-/**
- * @deprecated use {@link com.chuntung.plugin.gistsnippet.action.CustomComboBoxAction} for toolbar
- */
-class CustomDropDownLink extends JBComboBoxLabel {
-    private final JLabel leftIcon = new JLabel("", null, SwingConstants.CENTER);
-    private final List<String> items = new SmartList<>();
-    private final List<Icon> icons = new SmartList<>();
-    private String selectedItem;
-    private Consumer consumer;
+public class CustomDropDownLink<T> extends LinkLabel<Object> {
+    private T chosenItem;
 
-    CustomDropDownLink(String selectedItem, String[] items, Icon[] icons, Consumer consumer) {
-        this.selectedItem = selectedItem;
-        this.consumer = consumer;
-        this.items.addAll(Arrays.asList(items));
-        if (icons != null) {
-            this.icons.addAll(Arrays.asList(icons));
-        }
+    public CustomDropDownLink(@NotNull T value, @NotNull Runnable clickAction) {
+        super(value.toString(), AllIcons.General.LinkDropTriangle, (s, d) -> clickAction.run());
+        chosenItem = value;
+        init();
+    }
 
-//        setForeground(JBColor.link());
+    public CustomDropDownLink(@NotNull T value, @NotNull Convertor<? super CustomDropDownLink, ? extends JBPopup> popupBuilder) {
+        super(value.toString(), AllIcons.General.LinkDropTriangle);
+        chosenItem = value;
 
-        addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                showPopup();
-            }
-        });
+        setListener((linkLabel, d) -> {
+            JBPopup popup = popupBuilder.convert((CustomDropDownLink)linkLabel);
+            Point showPoint = new Point(0, getHeight() + JBUI.scale(4));
+            popup.show(new RelativePoint(this, showPoint));
+        }, null);
 
         init();
     }
 
+    public CustomDropDownLink(@NotNull T initialItem, @NotNull List<T> items, @Nullable Consumer<? super T> itemChosenAction, boolean updateLabel) {
+        this(initialItem, (linkLabel) -> {
+            IPopupChooserBuilder<T> popupBuilder = JBPopupFactory.getInstance().createPopupChooserBuilder(items).
+                    setRenderer(new LinkCellRenderer<>(linkLabel)).
+                    setItemChosenCallback(t -> {
+                        linkLabel.chosenItem = t;
+                        if (updateLabel) {
+                            linkLabel.setText(t.toString());
+                        }
+
+                        if (itemChosenAction != null) {
+                            itemChosenAction.consume(t);
+                        }
+                    });
+            return popupBuilder.createPopup();
+        });
+    }
+
     private void init() {
-        leftIcon.setBorder(new EmptyBorder(0, 4, 0, 4));
-        add(leftIcon, BorderLayout.WEST);
+        setIconTextGap(JBUI.scale(1));
+        setHorizontalAlignment(SwingConstants.LEADING);
+        setHorizontalTextPosition(SwingConstants.LEADING);
 
-        setText(selectedItem);
-
-        if (icons.size() > 0) {
-            leftIcon.setIcon(icons.get(items.indexOf(selectedItem)));
-        }
-    }
-
-    public String getSelectedItem() {
-        return selectedItem;
-    }
-
-    /**
-     * Only render selected item.
-     *
-     * @param selectedItem
-     */
-    public void setSelectedItem(String selectedItem) {
-        if (!items.contains(selectedItem)) {
-            return;
-        }
-
-        setText(selectedItem);
-        if (icons.size() > 0) {
-            leftIcon.setIcon(icons.get(items.indexOf(selectedItem)));
-        }
-
-        this.selectedItem = selectedItem;
-    }
-
-    void showPopup() {
-        if (!isEnabled()) return;
-        final BaseListPopupStep<String> list = new BaseListPopupStep<String>(null, items, icons) {
+        setUI(new MetalLabelUI() {
             @Override
-            public PopupStep onChosen(String selectedValue, boolean finalChoice) {
-                if (consumer != null) {
-                    consumer.accept(selectedValue);
-                }
-                setSelectedItem(selectedValue);
-                return super.onChosen(selectedValue, finalChoice);
+            protected String layoutCL(JLabel label, FontMetrics fontMetrics, String text, Icon icon,
+                                      Rectangle viewR, Rectangle iconR, Rectangle textR) {
+                String result = super.layoutCL(label, fontMetrics, text, icon, viewR, iconR, textR);
+                iconR.y += JBUI.scale(1);
+                return result;
             }
+        });
+    }
 
-            @Override
-            public int getDefaultOptionIndex() {
-                return items.indexOf(selectedItem);
-            }
+    public T getChosenItem() {
+        return chosenItem;
+    }
 
-//            @Override
-//            public Color getForegroundFor(String val) {
-//                return JBColor.link();
-//            }
-        };
+    private static class LinkCellRenderer<T> extends JLabel implements ListCellRenderer<T> {
+        private final JComponent owner;
 
-        final ListPopup popup = JBPopupFactory.getInstance().createListPopup(list);
-        Point showPoint = new Point(0, getHeight() + JBUI.scale(4));
-        popup.show(new RelativePoint(this, showPoint));
+        private LinkCellRenderer(JComponent owner) {
+            this.owner = owner;
+            setBorder(JBUI.Borders.empty(0, 5, 0, 10));
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return recomputeSize(super.getPreferredSize());
+        }
+
+        @Override
+        public Dimension getMinimumSize() {
+            return recomputeSize(super.getMinimumSize());
+        }
+
+        private Dimension recomputeSize(@NotNull Dimension size) {
+            size.height = Math.max(size.height, JBUI.scale(22));
+            size.width = Math.max(size.width, owner.getPreferredSize().width);
+            return size;
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends T> list, T value, int index, boolean isSelected, boolean cellHasFocus) {
+            setText(value.toString());
+            setEnabled(list.isEnabled());
+            setOpaque(true);
+
+            setBackground(isSelected ? list.getSelectionBackground() : UIManager.getColor("Label.background"));
+            setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
+
+            return this;
+        }
     }
 }

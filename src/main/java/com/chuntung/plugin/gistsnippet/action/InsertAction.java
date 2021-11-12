@@ -25,7 +25,7 @@ import org.jetbrains.annotations.NotNull;
  */
 public class InsertAction extends AnAction implements DumbAware {
     public InsertAction() {
-        super(IconLoader.getIcon("/images/gist.png"));
+        super(IconLoader.getIcon("/images/gist.png", InsertAction.class));
     }
 
     @Override
