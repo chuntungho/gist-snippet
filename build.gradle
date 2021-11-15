@@ -6,7 +6,7 @@ buildscript {
 }
 
 plugins {
-    id 'org.jetbrains.intellij' version '0.4.15'
+    id 'org.jetbrains.intellij' version '1.2.1'
 }
 
 group 'com.chuntung.plugin'
@@ -24,12 +24,12 @@ dependencies {
 
 // See https://github.com/JetBrains/gradle-intellij-plugin/
 intellij {
-    pluginName "Gist Snippet"
-    version ideaVersion
+    pluginName = "Gist Snippet"
+    version = ideaVersion
     plugins = ["github"]
-    sameSinceUntilBuild Boolean.valueOf(isEAP)
+    sameSinceUntilBuild = Boolean.valueOf(isEAP)
     patchPluginXml {
-        untilBuild customUtilBuild
-        changeNotes "${new File('changeNotes.txt').getText('UTF-8')}"
+        untilBuild = customUtilBuild
+        changeNotes = "${new File('changeNotes.txt').getText('UTF-8')}"
     }
 }

@@ -22,8 +22,6 @@ import com.intellij.openapi.actionSystem.PlatformDataKeys;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.ui.components.labels.LinkLabel;
 import com.intellij.ui.components.labels.LinkListener;
-import com.intellij.util.ui.EmptyIcon;
-import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -38,7 +36,6 @@ import java.awt.event.InputEvent;
  * @author Konstantin Bulenkov
  */
 public class CustomActionLink extends LinkLabel<Object> implements DataProvider {
-    private static final EmptyIcon ICON = JBUI.scale(EmptyIcon.create(0, 12));
     private final AnAction myAction;
     private final String myPlace = ActionPlaces.UNKNOWN;
     private InputEvent myEvent;
@@ -47,7 +44,7 @@ public class CustomActionLink extends LinkLabel<Object> implements DataProvider 
     private Color myNormalColor;
 
     public CustomActionLink(String text, @NotNull AnAction action) {
-        this(text, ICON, action);
+        this(text, null, action);
     }
 
     public CustomActionLink(String text, Icon icon, @NotNull AnAction action) {
