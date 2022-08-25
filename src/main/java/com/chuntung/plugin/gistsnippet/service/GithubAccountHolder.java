@@ -4,7 +4,6 @@
 
 package com.chuntung.plugin.gistsnippet.service;
 
-
 import com.intellij.credentialStore.CredentialAttributes;
 import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.openapi.components.ServiceManager;
@@ -37,7 +36,7 @@ public class GithubAccountHolder {
         // org.jetbrains.plugins.github.authentication.accounts.GithubAccountManager.getTokenForAccount
         String token = PasswordSafe.getInstance().getPassword(new CredentialAttributes("IntelliJ Platform GitHub — " + accountId));
         if (token == null) {
-            logger.warn("Only support token to access Github API, please add account by token");
+            throw new GistException("Only token is supported to access GitHub API, please add account through token");
         }
         return token;
     }

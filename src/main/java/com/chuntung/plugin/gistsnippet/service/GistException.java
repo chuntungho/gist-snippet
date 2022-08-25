@@ -8,4 +8,8 @@ public class GistException extends RuntimeException {
     GistException(Exception e) {
         super(e);
     }
+
+    public GistException(String message) {
+        super(message);
+    }
 }
