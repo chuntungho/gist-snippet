@@ -1,4 +1,3 @@
 <ul>
-<li>Migrate deprecated apis</li>
-<li>Improve ui operation</li>
+<li>Use github-api rather than intellij github plugin</li>
 </ul>

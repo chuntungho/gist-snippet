@@ -1,19 +1,20 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.dto;
 
-import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
-import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
-import com.chuntung.plugin.gistsnippet.dto.api.GistOwnerDTO;
 import com.intellij.ide.projectView.PresentationData;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.treeStructure.SimpleNode;
 import org.jetbrains.annotations.NotNull;
+import org.kohsuke.github.GHGist;
+import org.kohsuke.github.GHGistFile;
+import org.kohsuke.github.GHUser;
 
 import javax.swing.*;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.*;
@@ -37,9 +38,9 @@ public class SnippetNodeDTO extends SimpleNode {
     private String htmlUrl;
     private String description;
     private Integer filesCount;
-    private List<GistFileDTO> files;
+    private List<FileNodeDTO> files;
     private List<String> tags;
-    private GistOwnerDTO owner;
+    private GHUser owner;
     private boolean isPublic;
     private String createdAt;
     private String updatedAt;
@@ -100,11 +101,11 @@ public class SnippetNodeDTO extends SimpleNode {
         this.filesCount = filesCount;
     }
 
-    public List<GistFileDTO> getFiles() {
+    public List<FileNodeDTO> getFiles() {
         return files;
     }
 
-    public void setFiles(List<GistFileDTO> files) {
+    public void setFiles(List<FileNodeDTO> files) {
         this.files = files;
     }
 
@@ -116,11 +117,11 @@ public class SnippetNodeDTO extends SimpleNode {
         this.tags = tags;
     }
 
-    public GistOwnerDTO getOwner() {
+    public GHUser getOwner() {
         return owner;
     }
 
-    public void setOwner(GistOwnerDTO owner) {
+    public void setOwner(GHUser owner) {
         this.owner = owner;
     }
 
@@ -207,30 +208,38 @@ public class SnippetNodeDTO extends SimpleNode {
         presentation.setTooltip(tooltip);
     }
 
-    static SnippetNodeDTO of(GistDTO dto, ScopeEnum scope) {
+    static SnippetNodeDTO of(GHGist dto, ScopeEnum scope) {
         SnippetNodeDTO node = new SnippetNodeDTO();
         node.setScope(scope);
-        node.setId(dto.getId());
-        node.setHtmlUrl(dto.getHtmlUrl());
-        node.setCreatedAt(dto.getCreatedAt());
-        node.setUpdatedAt(dto.getUpdatedAt());
-        node.setPublic(dto.getPublic());
-        node.setOwner(dto.getOwner());
+        node.setId(dto.getGistId());
+        node.setHtmlUrl(dto.getHtmlUrl().toString());
+        try {
+            node.setCreatedAt(dto.getCreatedAt().toString());
+            node.setUpdatedAt(dto.getUpdatedAt().toString());
+            node.setOwner(dto.getOwner());
+        } catch (IOException e) {
+            // NOOP
+        }
+        node.setPublic(dto.isPublic());
         node.setFilesCount(dto.getFiles().size());
-        node.setFiles(new ArrayList<>(dto.getFiles().values()));
+        List<FileNodeDTO> files = new ArrayList<>();
+        for (GHGistFile gistFile : dto.getFiles().values()) {
+            files.add(new FileNodeDTO(gistFile));
+        }
+        node.setFiles(files);
 
         parseDescription(dto, node);
 
         return node;
     }
 
-    private static void parseDescription(GistDTO dto, SnippetNodeDTO node) {
+    private static void parseDescription(GHGist dto, SnippetNodeDTO node) {
         node.setTitle(null);
         node.setTags(null);
         if (dto.getDescription() == null || dto.getDescription().isEmpty()) {
             // set description as first file name if empty
-            for (GistFileDTO fileDTO : dto.getFiles().values()) {
-                node.setDescription(fileDTO.getFilename());
+            for (GHGistFile fileDTO : dto.getFiles().values()) {
+                node.setDescription(fileDTO.getFileName());
                 break;
             }
         } else {
@@ -257,25 +266,28 @@ public class SnippetNodeDTO extends SimpleNode {
         }
     }
 
-    public boolean update(GistDTO dto) {
+    public boolean update(GHGist dto) {
         boolean updated = false;
-        if (!Objects.equals(createdAt, dto.getCreatedAt()) || !Objects.equals(updatedAt, dto.getUpdatedAt())) {
-            parseDescription(dto, this);
+        try {
+            if (!Objects.equals(createdAt, dto.getCreatedAt()) || !Objects.equals(updatedAt, dto.getUpdatedAt())) {
+                parseDescription(dto, this);
+                setPublic(dto.isPublic());
+                setCreatedAt(dto.getCreatedAt().toString());
+                setUpdatedAt(dto.getUpdatedAt().toString());
 
-            setPublic(dto.getPublic());
-            setCreatedAt(dto.getCreatedAt());
-            setUpdatedAt(dto.getUpdatedAt());
-
-            updated = true;
+                updated = true;
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
 
         // merge files
         setFilesCount(dto.getFiles().size());
         Set<String> children = new HashSet<>();
         // traverse tree structure to remove non-existing items
-        Iterator<GistFileDTO> iterator = getFiles().iterator();
+        Iterator<FileNodeDTO> iterator = getFiles().iterator();
         while (iterator.hasNext()) {
-            GistFileDTO fileDTO = iterator.next();
+            FileNodeDTO fileDTO = iterator.next();
             if (dto.getFiles().containsKey(fileDTO.getFilename())) {
                 fileDTO.setContent(dto.getFiles().get(fileDTO.getFilename()).getContent());
                 children.add(fileDTO.getFilename());
@@ -286,10 +298,10 @@ public class SnippetNodeDTO extends SimpleNode {
         }
 
         // traverse latest files to add missing items if gist changed
-        for (GistFileDTO fileDTO : dto.getFiles().values()) {
-            if (!children.contains(fileDTO.getFilename())) {
+        for (GHGistFile gistFile : dto.getFiles().values()) {
+            if (!children.contains(gistFile.getFileName())) {
                 updated = true;
-                getFiles().add(fileDTO);
+                getFiles().add(new FileNodeDTO(gistFile));
             }
         }
 

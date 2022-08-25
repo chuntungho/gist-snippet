@@ -1,13 +1,12 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.action;
 
+import com.chuntung.plugin.gistsnippet.dto.FileNodeDTO;
 import com.chuntung.plugin.gistsnippet.dto.SnippetNodeDTO;
-import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
 import com.intellij.ide.BrowserUtil;
-import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.DumbAwareAction;
 import org.jetbrains.annotations.NotNull;
@@ -34,8 +33,8 @@ public class OpenInBrowserAction extends DumbAwareAction {
         String url = null;
         if (userObject instanceof SnippetNodeDTO) {
             url = ((SnippetNodeDTO) userObject).getHtmlUrl();
-        } else if (userObject instanceof GistFileDTO) {
-            url = ((GistFileDTO) userObject).getRawUrl();
+        } else if (userObject instanceof FileNodeDTO) {
+            url = ((FileNodeDTO) userObject).getRawUrl();
         }
         if (url != null) {
             BrowserUtil.open(url);

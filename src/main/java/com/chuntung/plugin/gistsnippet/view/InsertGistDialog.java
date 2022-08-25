@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.view;
@@ -8,11 +8,10 @@ import com.chuntung.plugin.gistsnippet.action.CustomComboBoxAction;
 import com.chuntung.plugin.gistsnippet.action.DeleteAction;
 import com.chuntung.plugin.gistsnippet.action.OpenInBrowserAction;
 import com.chuntung.plugin.gistsnippet.action.ReloadAction;
+import com.chuntung.plugin.gistsnippet.dto.FileNodeDTO;
 import com.chuntung.plugin.gistsnippet.dto.ScopeEnum;
 import com.chuntung.plugin.gistsnippet.dto.SnippetNodeDTO;
 import com.chuntung.plugin.gistsnippet.dto.SnippetRootNode;
-import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
-import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
 import com.chuntung.plugin.gistsnippet.service.GistException;
 import com.chuntung.plugin.gistsnippet.service.GistSnippetService;
 import com.chuntung.plugin.gistsnippet.service.GithubAccountHolder;
@@ -27,6 +26,7 @@ import com.intellij.notification.*;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.LogicalPosition;
@@ -51,6 +51,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
+import org.kohsuke.github.GHGist;
 
 import javax.swing.*;
 import javax.swing.event.TreeModelEvent;
@@ -296,7 +297,7 @@ public class InsertGistDialog extends DialogWrapper {
 
         // init toolbar
         ActionToolbar actionToolbar = ActionManager.getInstance()
-                .createActionToolbar(ActionPlaces.UNKNOWN, getToolbarActions(), true);
+                .createActionToolbar("Gist.toolbar", getToolbarActions(), true);
         actionToolbar.setTargetComponent(mainPanel);
         ((JPanel) yoursSplitPane.getLeftComponent()).add(actionToolbar.getComponent(), BorderLayout.NORTH);
 
@@ -337,9 +338,9 @@ public class InsertGistDialog extends DialogWrapper {
         if (selected.getUserObject() instanceof SnippetNodeDTO && selected.getChildCount() > 0) {
             selected = (DefaultMutableTreeNode) selected.getFirstChild();
         }
-        if (selected.getUserObject() instanceof GistFileDTO) {
+        if (selected.getUserObject() instanceof FileNodeDTO) {
             // show file content
-            GistFileDTO gistFileDTO = getUserObject(selected);
+            FileNodeDTO gistFileDTO = getUserObject(selected);
             showingFileUrl = gistFileDTO.getRawUrl();
 
             // just show cache in view
@@ -353,13 +354,16 @@ public class InsertGistDialog extends DialogWrapper {
     }
 
     // run in dispatch thread
-    private void showInEditor(GistFileDTO fileDTO, boolean forced) {
+    private void showInEditor(FileNodeDTO fileDTO, boolean forced) {
         if (!Objects.equals(editorFileUrl, fileDTO.getRawUrl()) || forced) {
             // setText require write access
             ApplicationManager.getApplication().runWriteAction(() -> {
-                EditorHighlighterFactory highlighterFactory = EditorHighlighterFactory.getInstance();
-                FileType fileType = GistFileDTO.getFileType(fileDTO);
+                if (editor.isDisposed()) {
+                    return;
+                }
 
+                EditorHighlighterFactory highlighterFactory = EditorHighlighterFactory.getInstance();
+                FileType fileType = FileNodeDTO.getFileType(fileDTO);
                 editor.getDocument().setText(fileDTO.getContent());
                 ((EditorEx) editor).setHighlighter(highlighterFactory.createEditorHighlighter(project, fileType));
                 editorFileUrl = fileDTO.getRawUrl();
@@ -379,20 +383,12 @@ public class InsertGistDialog extends DialogWrapper {
         DefaultMutableTreeNode parent = (DefaultMutableTreeNode) selected.getParent();
         SnippetNodeDTO snippet = getUserObject(parent);
         new Task.Backgroundable(project, "Loading gist files...") {
-            boolean showInDispatch = false;
+            boolean shouldUpdate = false;
 
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                GistDTO gist = service.getGistDetail(accountHolder.getAccount(), snippet.getId(), forced);
-                boolean shouldUpdate = snippet.update(gist);
-                if (shouldUpdate) {
-                    // invalidating is in a new background task, should invoker later in dispatch thread
-                    snippetStructure.invalidate(new TreePath(parent), true).onSuccess((treePath) -> {
-                        ApplicationManager.getApplication().invokeLater(() -> previewFile());
-                    });
-                } else {
-                    showInDispatch = true;
-                }
+                GHGist gist = service.getGistDetail(accountHolder.getAccessToken(), snippet.getId(), forced);
+                shouldUpdate = snippet.update(gist);
             }
 
             @Override
@@ -403,14 +399,19 @@ public class InsertGistDialog extends DialogWrapper {
             @Override
             // this will run in dispatch thread
             public void onSuccess() {
-                if (showInDispatch) {
+                if (shouldUpdate) {
+                    // invalidating is in a new background task, should invoker later in dispatch thread
+                    snippetStructure.invalidate(new TreePath(parent), true).onSuccess((treePath) -> {
+                        ApplicationManager.getApplication().invokeLater(this::previewFile, ModalityState.stateForComponent(mainPanel));
+                    });
+                } else {
                     previewFile();
                 }
             }
 
             private void previewFile() {
                 // selected may be changed by user, check before replacing editor content
-                GistFileDTO gistFileDTO = getUserObject(selected);
+                FileNodeDTO gistFileDTO = getUserObject(selected);
                 if (Objects.equals(showingFileUrl, gistFileDTO.getRawUrl())) {
                     if (gistFileDTO.getContent() != null) {
                         showInEditor(gistFileDTO, forced);
@@ -436,7 +437,7 @@ public class InsertGistDialog extends DialogWrapper {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
-                    List<GistDTO> ownGist = service.queryOwnGist(accountHolder.getAccount(), forced);
+                    List<GHGist> ownGist = service.queryOwnGist(accountHolder.getAccessToken(), forced);
                     // non-modal task should not invoke onSuccess() in modal dialog initialization.
                     // it will be blocked in dispatch thread by modal dialog, here just run in background
                     renderTree(ownGist, ScopeEnum.OWN);
@@ -455,7 +456,7 @@ public class InsertGistDialog extends DialogWrapper {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
-                    List<GistDTO> starredGist = service.queryStarredGist(accountHolder.getAccount(), forced);
+                    List<GHGist> starredGist = service.queryStarredGist(accountHolder.getAccessToken(), forced);
                     renderTree(starredGist, ScopeEnum.STARRED);
                 } catch (GistException e) {
                     notifyWarn("Failed to load starred gists, error: " + e.getMessage());
@@ -464,7 +465,7 @@ public class InsertGistDialog extends DialogWrapper {
         }.queue();
     }
 
-    private void renderTree(List<GistDTO> gistList, ScopeEnum scope) {
+    private void renderTree(List<GHGist> gistList, ScopeEnum scope) {
         snippetRoot.resetChildren(gistList, scope);
 
         // filter by type if selected
@@ -515,7 +516,7 @@ public class InsertGistDialog extends DialogWrapper {
 
     @Override
     protected void dispose() {
-        if (editor != null) {
+        if (editor != null && !editor.isDisposed()) {
             EditorFactory.getInstance().releaseEditor(editor);
         }
 

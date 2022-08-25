@@ -1,12 +1,12 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.dto;
 
-import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
 import com.intellij.ui.treeStructure.SimpleNode;
 import org.jetbrains.annotations.NotNull;
+import org.kohsuke.github.GHGist;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,9 +28,9 @@ public class SnippetRootNode extends SimpleNode {
         return children == null ? NO_CHILDREN : children.toArray(NO_CHILDREN);
     }
 
-    public void resetChildren(List<GistDTO> gistList, ScopeEnum scope) {
+    public void resetChildren(List<GHGist> gistList, ScopeEnum scope) {
         List<SnippetNodeDTO> children = new ArrayList<>(gistList.size());
-        for (GistDTO gistDTO : gistList) {
+        for (GHGist gistDTO : gistList) {
             children.add(SnippetNodeDTO.of(gistDTO, scope));
         }
         this.children = children;

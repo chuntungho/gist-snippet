@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.view;

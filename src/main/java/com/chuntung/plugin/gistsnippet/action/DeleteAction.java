@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.action;
@@ -70,9 +70,9 @@ public class DeleteAction extends AnAction implements DumbAware {
 
                 @Override
                 public void run(@NotNull ProgressIndicator indicator) {
-                    GithubAccount account = GithubAccountHolder.getInstance(project).getAccount();
+                    String token = GithubAccountHolder.getInstance(project).getAccessToken();
                     GistSnippetService service = GistSnippetService.getInstance();
-                    service.deleteGist(account, gistIds);
+                    service.deleteGist(token, gistIds);
                     deleted = true;
                 }
 

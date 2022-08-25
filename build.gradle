@@ -15,10 +15,14 @@ version "${version}"
 sourceCompatibility = JavaVersion.VERSION_1_8
 
 repositories {
+    mavenLocal()
     mavenCentral()
 }
 
 dependencies {
+    // https://mvnrepository.com/artifact/org.kohsuke/github-api
+    implementation(files("libs/github-api-1.309-SNAPSHOT.jar"))
+
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 

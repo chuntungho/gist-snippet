@@ -1,10 +1,10 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.action;
 
-import com.chuntung.plugin.gistsnippet.dto.api.GistFileDTO;
+import com.chuntung.plugin.gistsnippet.dto.FileNodeDTO;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.DumbAware;
@@ -36,7 +36,7 @@ public class ReloadAction extends AnAction implements DumbAware {
     public void update(@NotNull AnActionEvent e) {
         // check if gist file selected
         DefaultMutableTreeNode node = (DefaultMutableTreeNode) tree.getLastSelectedPathComponent();
-        if (!(node.getUserObject() instanceof GistFileDTO)) {
+        if (!(node.getUserObject() instanceof FileNodeDTO)) {
             e.getPresentation().setVisible(false);
         }
     }

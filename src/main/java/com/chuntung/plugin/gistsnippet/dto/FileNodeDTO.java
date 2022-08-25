@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
-package com.chuntung.plugin.gistsnippet.dto.api;
+package com.chuntung.plugin.gistsnippet.dto;
 
 import com.google.gson.annotations.SerializedName;
 import com.intellij.ide.projectView.PresentationData;
@@ -13,8 +13,9 @@ import com.intellij.openapi.fileTypes.UnknownFileType;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.treeStructure.SimpleNode;
 import org.jetbrains.annotations.NotNull;
+import org.kohsuke.github.GHGistFile;
 
-public class GistFileDTO extends SimpleNode {
+public class FileNodeDTO extends SimpleNode {
     private String filename;
     private String type;
     private String language;
@@ -25,6 +26,19 @@ public class GistFileDTO extends SimpleNode {
     private Long size;
     private Boolean truncated;
     private String content;
+
+    public FileNodeDTO() {
+    }
+
+    public FileNodeDTO(GHGistFile gistFile) {
+        this.setFilename(gistFile.getFileName());
+        this.setContent(gistFile.getContent());
+        this.setLanguage(gistFile.getLanguage());
+        this.setRawUrl(gistFile.getRawUrl());
+        this.setType(gistFile.getType());
+        this.setSize((long) gistFile.getSize());
+        this.setTruncated(gistFile.isTruncated());
+    }
 
     public String getFilename() {
         return filename;
@@ -102,7 +116,7 @@ public class GistFileDTO extends SimpleNode {
     }
 
     @NotNull
-    public static FileType getFileType(GistFileDTO dto) {
+    public static FileType getFileType(FileNodeDTO dto) {
         FileTypeManager fileTypeManager = FileTypeManager.getInstance();
         FileType fileType = fileTypeManager.getFileTypeByFileName(dto.getFilename());
         if (UnknownFileType.INSTANCE == fileType) {

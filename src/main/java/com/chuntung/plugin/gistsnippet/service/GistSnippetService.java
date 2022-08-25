@@ -1,18 +1,16 @@
 /*
- * Copyright (c) 2020 Tony Ho. Some rights reserved.
+ * Copyright (c) 2020 Chuntung Ho. Some rights reserved.
  */
 
 package com.chuntung.plugin.gistsnippet.service;
 
-import com.chuntung.plugin.gistsnippet.dto.api.GistDTO;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.containers.ContainerUtil;
-import org.jetbrains.plugins.github.api.GithubApiRequest;
-import org.jetbrains.plugins.github.api.GithubApiRequestExecutor;
-import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager;
-import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
-import org.jetbrains.plugins.github.exceptions.GithubJsonException;
+import org.kohsuke.github.GHGist;
+import org.kohsuke.github.GitHub;
+import org.kohsuke.github.GitHubBuilder;
+import org.kohsuke.github.PagedIterable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -24,44 +22,39 @@ import java.util.concurrent.atomic.AtomicReference;
  * API Doc: https://developer.github.com/v3/gists/
  */
 public class GistSnippetService {
-    public static final Logger logger = Logger.getInstance(GistSnippetService.class);
-
-    public static final String MIME_TYPE = "application/vnd.github.v3+json";
-    public static final String OWN_GISTS_URL = "https://api.github.com/gists";
-    public static final String STARRED_GISTS_URL = "https://api.github.com/gists/starred";
-    public static final String GIST_DETAIL_URL = "https://api.github.com/gists/%s";
+    private static final Logger logger = Logger.getInstance(GistSnippetService.class);
 
     // cache in memory, can be collected
     private Map<String, List<String>> scopeCache = ContainerUtil.createConcurrentSoftValueMap();
-    private Map<String, GistDTO> gistCache = ContainerUtil.createConcurrentSoftValueMap();
+    private Map<String, GHGist> gistCache = ContainerUtil.createConcurrentSoftValueMap();
 
     public static GistSnippetService getInstance() {
         return ServiceManager.getService(GistSnippetService.class);
     }
 
     // queryOwnGist
-    public List<GistDTO> queryOwnGist(GithubAccount account, boolean forced) {
-        String key = account.toString() + "#own";
+    public List<GHGist> queryOwnGist(String token, boolean forced) {
+        String key = token + "#own";
         if (forced) {
             List<String> gists = scopeCache.computeIfPresent(key, (k, v) -> scopeCache.remove(k));
             removeFromCache(gists);
         }
 
-        AtomicReference<List<GistDTO>> result = new AtomicReference<>();
+        AtomicReference<List<GHGist>> result = new AtomicReference<>();
         List<String> idList = scopeCache.computeIfAbsent(key, (k) -> {
             try {
-                GithubApiRequest.Get.JsonList request = new GithubApiRequest.Get.JsonList(OWN_GISTS_URL, GistDTO.class, MIME_TYPE);
-                GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
-                List<GistDTO> gistList = (List<GistDTO>) executor.execute(request);
-                result.set(gistList);
-                return putIntoCache(gistList);
+                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                PagedIterable<GHGist> pagedResult = github.listGists();
+                List<GHGist> ghGists = pagedResult.toList();
+                result.set(ghGists);
+                return putIntoCache(ghGists);
             } catch (IOException e) {
                 logger.info("Failed to query own gists, error: " + e.getMessage());
                 throw new GistException(e);
             }
         });
 
-        return decideResult(account, result, idList);
+        return decideResult(token, result, idList);
     }
 
     private void removeFromCache(List<String> gists) {
@@ -72,25 +65,25 @@ public class GistSnippetService {
         }
     }
 
-    private List<String> putIntoCache(List<GistDTO> gistList) {
+    private List<String> putIntoCache(List<GHGist> gistList) {
         if (gistList != null) {
             List<String> list = new ArrayList<>(gistList.size());
-            for (GistDTO gistDTO : gistList) {
-                list.add(gistDTO.getId());
-                gistCache.putIfAbsent(gistDTO.getId(), gistDTO);
+            for (GHGist gistDTO : gistList) {
+                list.add(gistDTO.getGistId());
+                gistCache.putIfAbsent(gistDTO.getGistId(), gistDTO);
             }
             return list;
         }
         return null;
     }
 
-    private List<GistDTO> decideResult(GithubAccount account, AtomicReference<List<GistDTO>> result, List<String> cacheList) {
+    private List<GHGist> decideResult(String token, AtomicReference<List<GHGist>> result, List<String> cacheList) {
         // load from cache
         if (result.get() == null && cacheList != null) {
             // N + 1
-            List<GistDTO> gistList = new ArrayList<>(cacheList.size());
+            List<GHGist> gistList = new ArrayList<>(cacheList.size());
             for (String gistId : cacheList) {
-                gistList.add(getGistDetail(account, gistId, false));
+                gistList.add(getGistDetail(token, gistId, false));
             }
             result.set(gistList);
         }
@@ -99,19 +92,20 @@ public class GistSnippetService {
     }
 
     // queryStarredGist
-    public List<GistDTO> queryStarredGist(GithubAccount account, boolean forced) {
-        String key = account.toString() + "#starred";
+    public List<GHGist> queryStarredGist(String token, boolean forced) {
+        String key = token + "#starred";
         if (forced) {
             List<String> gists = scopeCache.computeIfPresent(key, (k, v) -> scopeCache.remove(k));
             removeFromCache(gists);
         }
 
-        AtomicReference<List<GistDTO>> result = new AtomicReference<>();
+        AtomicReference<List<GHGist>> result = new AtomicReference<>();
         List<String> cacheList = scopeCache.computeIfAbsent(key, (k) -> {
             try {
-                GithubApiRequest.Get.JsonList<GistDTO> request = new GithubApiRequest.Get.JsonList<>(STARRED_GISTS_URL, GistDTO.class, MIME_TYPE);
-                GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
-                List<GistDTO> gistList = (List<GistDTO>) executor.execute(request);
+                // TODO starred gists
+                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                PagedIterable<GHGist> pagedResult = github.listStarredGists();
+                List<GHGist> gistList = pagedResult.toList();
                 result.set(gistList);
                 return putIntoCache(gistList);
             } catch (IOException e) {
@@ -120,32 +114,30 @@ public class GistSnippetService {
             }
         });
 
-        return decideResult(account, result, cacheList);
+        return decideResult(token, result, cacheList);
     }
 
     // queryPublicGist
-    public List<GistDTO> getPublicGist(GithubAccount account) {
+    public List<GHGist> queryPublicGists(String keyword) {
         // TODO
         return null;
     }
 
     /**
-     * @param account
+     * @param token
      * @param gistId
-     * @param forced  true to load file content from remote server
+     * @param forced    true to load file content from remote server
      * @return
      */
-    public GistDTO getGistDetail(GithubAccount account, String gistId, boolean forced) {
+    public GHGist getGistDetail(String token, String gistId, boolean forced) {
         if (forced) {
             gistCache.computeIfPresent(gistId, (k, v) -> gistCache.remove(k));
         }
 
         return gistCache.computeIfAbsent(gistId, (k) -> {
-            String url = String.format(GIST_DETAIL_URL, gistId);
-            GithubApiRequest.Get.Json<GistDTO> request = new GithubApiRequest.Get.Json(url, GistDTO.class, MIME_TYPE);
             try {
-                GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
-                return executor.execute(request);
+                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                return github.getGist(gistId);
             } catch (IOException e) {
                 logger.info("Failed to get gist detail, error: " + e.getMessage());
                 throw new GistException(e);
@@ -153,21 +145,14 @@ public class GistSnippetService {
         });
     }
 
-    public void deleteGist(GithubAccount account, List<String> gistIds) {
+    public void deleteGist(String token, List<String> gistIds) {
         try {
-            GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account);
             for (String gistId : gistIds) {
-                String url = String.format(GIST_DETAIL_URL, gistId);
-                // since 2019.1
-                GithubApiRequest.Delete.Json<String> delete = new GithubApiRequest.Delete.Json<>(url, null, String.class);
-                try {
-                    executor.execute(delete);
-                } catch (GithubJsonException e) {
-                    logger.debug("Ignored exception due to no result returned by API");
-                }
+                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                github.deleteGist(gistId);
                 gistCache.remove(gistId);
             }
-            String key = account.toString() + "#own";
+            String key = token + "#own";
             List<String> cacheList = scopeCache.get(key);
             if (cacheList != null) {
                 cacheList.removeAll(gistIds);

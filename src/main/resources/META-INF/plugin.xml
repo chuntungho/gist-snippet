@@ -1,11 +1,11 @@
 <!--
-  ~ Copyright (c) 2020 Tony Ho. Some rights reserved.
+  ~ Copyright (c) 2020 Chuntung Ho. Some rights reserved.
   -->
 
 <idea-plugin>
     <id>com.chuntung.plugin.gistsnippet</id>
     <name>Gist Snippet</name>
-    <vendor email="ho@chuntung.com" url="https://gist.chuntung.com">Tony Ho</vendor>
+    <vendor email="ho@chuntung.com" url="https://gist.chuntung.com">Chuntung Ho</vendor>
 
     <description><![CDATA[
     <a href="https://gist.chuntung.com">Getting Started</a> | <a href="https://chuntung.com/donate">Donate</a>
