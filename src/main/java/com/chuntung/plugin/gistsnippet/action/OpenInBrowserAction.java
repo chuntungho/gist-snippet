@@ -7,6 +7,7 @@ package com.chuntung.plugin.gistsnippet.action;
 import com.chuntung.plugin.gistsnippet.dto.FileNodeDTO;
 import com.chuntung.plugin.gistsnippet.dto.SnippetNodeDTO;
 import com.intellij.ide.BrowserUtil;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.DumbAwareAction;
 import org.jetbrains.annotations.NotNull;
@@ -39,5 +40,9 @@ public class OpenInBrowserAction extends DumbAwareAction {
         if (url != null) {
             BrowserUtil.open(url);
         }
+    }
+
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
     }
 }

@@ -7,10 +7,7 @@ package com.chuntung.plugin.gistsnippet.service;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.containers.ContainerUtil;
-import org.kohsuke.github.GHGist;
-import org.kohsuke.github.GitHub;
-import org.kohsuke.github.GitHubBuilder;
-import org.kohsuke.github.PagedIterable;
+import org.kohsuke.github.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,6 +20,8 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class GistSnippetService {
     private static final Logger logger = Logger.getInstance(GistSnippetService.class);
+
+    private final GithubHelper githubHelper = new GithubHelper();
 
     // cache in memory, can be collected
     private Map<String, List<String>> scopeCache = ContainerUtil.createConcurrentSoftValueMap();
@@ -43,12 +42,13 @@ public class GistSnippetService {
         AtomicReference<List<GHGist>> result = new AtomicReference<>();
         List<String> idList = scopeCache.computeIfAbsent(key, (k) -> {
             try {
-                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                GitHub github = githubHelper.getClient(token);
                 PagedIterable<GHGist> pagedResult = github.listGists();
                 List<GHGist> ghGists = pagedResult.toList();
                 result.set(ghGists);
                 return putIntoCache(ghGists);
             } catch (IOException e) {
+                githubHelper.logError();
                 logger.info("Failed to query own gists, error: " + e.getMessage());
                 throw new GistException(e);
             }
@@ -103,7 +103,7 @@ public class GistSnippetService {
         List<String> cacheList = scopeCache.computeIfAbsent(key, (k) -> {
             try {
                 // TODO starred gists
-                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                GitHub github = githubHelper.getClient(token);
                 PagedIterable<GHGist> pagedResult = github.listStarredGists();
                 List<GHGist> gistList = pagedResult.toList();
                 result.set(gistList);
@@ -126,7 +126,7 @@ public class GistSnippetService {
     /**
      * @param token
      * @param gistId
-     * @param forced    true to load file content from remote server
+     * @param forced true to load file content from remote server
      * @return
      */
     public GHGist getGistDetail(String token, String gistId, boolean forced) {
@@ -136,9 +136,10 @@ public class GistSnippetService {
 
         return gistCache.computeIfAbsent(gistId, (k) -> {
             try {
-                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                GitHub github = githubHelper.getClient(token);
                 return github.getGist(gistId);
             } catch (IOException e) {
+                githubHelper.logError();
                 logger.info("Failed to get gist detail, error: " + e.getMessage());
                 throw new GistException(e);
             }
@@ -148,7 +149,7 @@ public class GistSnippetService {
     public void deleteGist(String token, List<String> gistIds) {
         try {
             for (String gistId : gistIds) {
-                GitHub github = new GitHubBuilder().withOAuthToken(token).build();
+                GitHub github = githubHelper.getClient(token);
                 github.deleteGist(gistId);
                 gistCache.remove(gistId);
             }
@@ -158,6 +159,7 @@ public class GistSnippetService {
                 cacheList.removeAll(gistIds);
             }
         } catch (IOException e) {
+            githubHelper.logError();
             logger.info("Failed to delete gist, error: " + e.getMessage());
             throw new GistException(e);
         }

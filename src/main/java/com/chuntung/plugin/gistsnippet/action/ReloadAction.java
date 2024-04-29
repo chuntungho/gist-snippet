@@ -5,6 +5,7 @@
 package com.chuntung.plugin.gistsnippet.action;
 
 import com.chuntung.plugin.gistsnippet.dto.FileNodeDTO;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.DumbAware;
@@ -39,5 +40,9 @@ public class ReloadAction extends AnAction implements DumbAware {
         if (!(node.getUserObject() instanceof FileNodeDTO)) {
             e.getPresentation().setVisible(false);
         }
+    }
+
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
     }
 }

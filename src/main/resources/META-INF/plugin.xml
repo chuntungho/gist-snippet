@@ -8,7 +8,7 @@
     <vendor email="ho@chuntung.com" url="https://gist.chuntung.com">Chuntung Ho</vendor>
 
     <description><![CDATA[
-    <a href="https://gist.chuntung.com">Getting Started</a> | <a href="https://chuntung.com/donate">Donate</a>
+    <a href="https://plugins.jetbrains.com/plugin/13587-gist-snippet/getting-started">Getting Started</a>
     <br><br>
     A code snippet tool based on GitHub Gist, that provides with a feature to fetch own or starred gists of GitHub accounts.
     It depends on built-in GitHub plugin which should be enabled.

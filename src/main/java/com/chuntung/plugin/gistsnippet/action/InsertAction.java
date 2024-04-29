@@ -6,6 +6,7 @@ package com.chuntung.plugin.gistsnippet.action;
 
 import com.chuntung.plugin.gistsnippet.view.InsertGistDialog;
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
@@ -80,5 +81,9 @@ public class InsertAction extends AnAction implements DumbAware {
             // only available for editor popup menu
             event.getPresentation().setVisible(false);
         }
+    }
+
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
     }
 }

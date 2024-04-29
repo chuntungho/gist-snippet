@@ -4,10 +4,7 @@
 
 package com.chuntung.plugin.gistsnippet.action;
 
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.DefaultActionGroup;
-import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
 import com.intellij.openapi.project.DumbAware;
 import org.jetbrains.annotations.NotNull;
@@ -32,6 +29,10 @@ public class CustomComboBoxAction extends ComboBoxAction implements DumbAware {
         if (actions != null && actions.length > 0) {
             reset();
         }
+    }
+
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
     }
 
     public void update(@NotNull AnActionEvent e) {

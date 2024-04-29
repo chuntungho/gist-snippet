@@ -9,6 +9,7 @@ import com.chuntung.plugin.gistsnippet.dto.SnippetNodeDTO;
 import com.chuntung.plugin.gistsnippet.dto.SnippetRootNode;
 import com.chuntung.plugin.gistsnippet.service.GistSnippetService;
 import com.chuntung.plugin.gistsnippet.service.GithubAccountHolder;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -18,7 +19,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.MessageDialogBuilder;
 import com.intellij.ui.tree.StructureTreeModel;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
@@ -104,5 +104,9 @@ public class DeleteAction extends AnAction implements DumbAware {
         }
 
         event.getPresentation().setVisible(false);
+    }
+
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
     }
 }
