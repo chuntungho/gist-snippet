@@ -364,7 +364,7 @@ public class InsertGistDialog extends DialogWrapper {
 
                 EditorHighlighterFactory highlighterFactory = EditorHighlighterFactory.getInstance();
                 FileType fileType = FileNodeDTO.getFileType(fileDTO);
-                editor.getDocument().setText(fileDTO.getContent());
+                editor.getDocument().setText(fileDTO.getContent().replaceAll("\\r\\n?", "\n"));
                 ((EditorEx) editor).setHighlighter(highlighterFactory.createEditorHighlighter(project, fileType));
                 editorFileUrl = fileDTO.getRawUrl();
 
